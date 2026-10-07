@@ -1,0 +1,51 @@
+name: Check proxies
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Xray-core
+        run: |
+          sudo bash -c "$(curl -fL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 https://github.com/XTLS/Xray-install/raw/main/install-release.sh)"
+          xray version
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Validate project
+        run: python validate.py
+
+      - name: Run checker
+        run: python checker.py
+
+      - name: Send Telegram stats
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python telegram_notify.py
+
+      - name: Commit and push result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add proxies/working.txt proxies/top10.txt proxies/report.txt proxies/history.json
+          git diff --staged --quiet || git commit -m "chore: update proxy results [skip ci]"
+          git push
