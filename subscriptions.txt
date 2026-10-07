@@ -4,9 +4,7 @@ https://sub.vlessfo.ru/vlessforu/working_configs.txt
 https://raw.githubusercontent.com/LimeHi/LimeVPN/refs/heads/main/whitelist.txt
 https://hub.mos.ru/kfwl/auto/raw/main/wl
 https://hub.mos.ru/akelladejavu/bunker/-/raw/main/WHITE_LIST.txt
-https://hub.mos.ru/akelladejavu/bunker/-/raw/main/BLACK_LIST.txt
 https://hub.mos.ru/rkp/sub-roskompozor/raw/main/bl
-https://blacklist.etoneya.baby
 https://translate.yandex.ru/translate?url=https://white.igareck.net/WHITE-CIDR-RU-all.txt&lang=de-de
 https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt
 https://gitverse.ru/api/repos/Pizduk/PizdukVPN/raw/branch/master/WlSubPiz.txt
