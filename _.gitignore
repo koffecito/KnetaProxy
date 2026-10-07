@@ -1,0 +1,4 @@
+tmp_configs/
+__pycache__/
+*.pyc
+.env

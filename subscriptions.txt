@@ -1,0 +1,10 @@
+https://whitelist.etoneya.baby
+https://gitverse.ru/api/repos/RKP_channel/RKP_bypass_configs/raw/branch/master/whitelist.txt
+https://translate.yandex.ru/translate?url=https://white.igareck.net/WHITE-CIDR-RU-all.txt&lang=de-de
+https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt
+https://gitverse.ru/api/repos/Pizduk/PizdukVPN/raw/branch/master/WlSubPiz.txt
+https://raw.githubusercontent.com/ImSketch1337/vless-/refs/heads/main/BLWLservers.txt
+https://raw.githubusercontent.com/btsk161/Freeinternet_byMygalaru.github.io/refs/heads/main/premium.txt
+https://raw.githubusercontent.com/nzea243/vpn_2.0_test/refs/heads/main/wl_228.txt
+https://sub.vlessfo.ru/vlessforu/working_configs.txt
+https://raw.githubusercontent.com/LimeHi/LimeVPN/refs/heads/main/whitelist.txt
