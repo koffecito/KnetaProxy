@@ -113,7 +113,7 @@ def build_message(report: str) -> str:
     main_url, top_url = subscription_urls()
 
     lines = [
-        "📊 <b>KnetaWL</b>",
+        "📊 <b>KnetaProxy</b>",
         "<b>Результаты проверки</b>",
         "",
         f"⚙️ Режим: <code>{mode}</code>",
