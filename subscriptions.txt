@@ -1,6 +1,5 @@
 https://raw.githubusercontent.com/btsk161/Freeinternet_byMygalaru.github.io/refs/heads/main/premium.txt
 https://sub.vlessfo.ru/vlessforu/working_configs.txt
-https://raw.githubusercontent.com/LimeHi/LimeVPN/refs/heads/main/whitelist.txt
 https://hub.mos.ru/kfwl/auto/raw/main/wl
 https://hub.mos.ru/akelladejavu/bunker/-/raw/main/WHITE_LIST.txt
 https://hub.mos.ru/rkp/sub-roskompozor/raw/main/bl
