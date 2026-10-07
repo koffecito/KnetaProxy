@@ -1,5 +1,4 @@
 https://raw.githubusercontent.com/btsk161/Freeinternet_byMygalaru.github.io/refs/heads/main/premium.txt
-https://raw.githubusercontent.com/nzea243/vpn_2.0_test/refs/heads/main/wl_228.txt
 https://sub.vlessfo.ru/vlessforu/working_configs.txt
 https://raw.githubusercontent.com/LimeHi/LimeVPN/refs/heads/main/whitelist.txt
 https://hub.mos.ru/kfwl/auto/raw/main/wl
@@ -10,4 +9,3 @@ https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt
 https://gitverse.ru/api/repos/Pizduk/PizdukVPN/raw/branch/master/WlSubPiz.txt
 https://raw.githubusercontent.com/ImSketch1337/vless-/refs/heads/main/BLWLservers.txt
 https://gitverse.ru/api/repos/gidro/white/raw/branch/master/subscription.txt
-https://github.com/regionovec-jpg/subs_pars/raw/refs/heads/main/subs_bl.txt
