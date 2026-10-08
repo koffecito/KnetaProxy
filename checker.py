@@ -30,7 +30,7 @@ CHEBURCHECK_WORKERS = int(os.environ.get("CHEBURCHECK_WORKERS", 4))
 CHEBURCHECK_RETRIES = int(os.environ.get("CHEBURCHECK_RETRIES", 2))
 CHEBURCHECK_MIN_INTERVAL = float(os.environ.get("CHEBURCHECK_MIN_INTERVAL", 0.8))
 XRAY_BIN = os.environ.get("XRAY_BIN", "xray")
-XRAY_STARTUP_DELAY = float(os.environ.get("XRAY_STARTUP_DELAY", 0.7))
+XRAY_STARTUP_DELAY = float(os.environ.get("XRAY_STARTUP_DELAY", 1.2))
 REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", 6))
 EXIT_IP_API_URL = os.environ.get("EXIT_IP_API_URL", "https://api.ipify.org?format=json")
 EXIT_IP_TIMEOUT = float(os.environ.get("EXIT_IP_TIMEOUT", 5))
@@ -78,10 +78,18 @@ NAME_SUFFIX = INFO["name_suffix"]
 OUTPUT_DIR = "proxies"
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "working.txt")
 TOP_FILE = os.path.join(OUTPUT_DIR, "top10.txt")
+ALL_FILE = os.path.join(OUTPUT_DIR, "all.txt")
 REPORT_FILE = os.path.join(OUTPUT_DIR, "report.txt")
 HISTORY_FILE = os.path.join(OUTPUT_DIR, "history.json")
 TMP_DIR = "tmp_configs"
-GENERATE_204_URL = os.environ.get("GENERATE_204_URL", "https://www.gstatic.com/generate_204")
+GENERATE_204_URLS = tuple(
+    x.strip()
+    for x in os.environ.get(
+        "GENERATE_204_URLS",
+        "https://www.gstatic.com/generate_204,https://clients3.google.com/generate_204,https://connectivitycheck.gstatic.com/generate_204"
+    ).split(",")
+    if x.strip()
+)
 TCP_TARGETS = [x.strip() for x in os.environ.get("TCP_TARGETS", "1.1.1.1:443").split(",") if x.strip()]
 
 _chebur_lock = threading.Lock()
@@ -733,26 +741,44 @@ def socks_proxies(port: int) -> dict[str, str]:
 
 
 def check_generate_204(proxies: dict[str, str]) -> tuple[bool, str]:
-    for attempt in range(SITE_RETRIES + 1):
-        try:
-            r = requests.get(
-                GENERATE_204_URL,
-                proxies=proxies,
-                timeout=REQUEST_TIMEOUT,
-                allow_redirects=False,
-            )
-            if r.status_code in HTTP_TRANSIENT and attempt < SITE_RETRIES:
-                time.sleep(SITE_RETRY_BACKOFF * (2 ** attempt))
-                continue
-            if r.status_code == 204:
-                return True, "generate_204 OK"
-            return False, http_error_text("generate_204", r)
-        except requests.RequestException as e:
-            if attempt < SITE_RETRIES:
-                time.sleep(SITE_RETRY_BACKOFF * (2 ** attempt))
-                continue
-            return False, exception_text("generate_204", e)
-    return False, "generate_204: неизвестная ошибка"
+    errors: list[str] = []
+
+    for url in GENERATE_204_URLS:
+        for attempt in range(SITE_RETRIES + 1):
+            try:
+                r = requests.get(
+                    url,
+                    proxies=proxies,
+                    timeout=REQUEST_TIMEOUT,
+                    allow_redirects=False,
+                    headers={"Connection": "close", "User-Agent": "KnetaProxy/1.0"},
+                )
+                if r.status_code == 204:
+                    return True, "generate_204 OK"
+
+                error = http_error_text("generate_204", r)
+                if r.status_code in HTTP_TRANSIENT and attempt < SITE_RETRIES:
+                    retry_after = r.headers.get("Retry-After", "")
+                    try:
+                        delay = max(0.0, float(retry_after)) if retry_after else SITE_RETRY_BACKOFF * (2 ** attempt)
+                    except ValueError:
+                        delay = SITE_RETRY_BACKOFF * (2 ** attempt)
+                    time.sleep(min(delay, 5.0))
+                    continue
+
+                errors.append(f"{url}: {error}")
+                break
+            except requests.RequestException as e:
+                error = exception_text("generate_204", e)
+                if attempt < SITE_RETRIES:
+                    time.sleep(SITE_RETRY_BACKOFF * (2 ** attempt))
+                    continue
+                errors.append(f"{url}: {error}")
+                break
+
+    if errors:
+        return False, "generate_204: " + " | ".join(errors[:3])
+    return False, "generate_204: нет доступных тестовых URL"
 
 
 def socks5_connect(local_port: int, host: str, port: int) -> socket.socket:
