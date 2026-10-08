@@ -25,10 +25,10 @@ import requests
 SUBSCRIPTIONS_FILE = os.environ.get("SUBSCRIPTIONS_FILE", "subscriptions.txt")
 TYPE_FILE = os.environ.get("TYPE_FILE", "type.txt")
 CHEBURCHECK_URL = os.environ.get("CHEBURCHECK_URL", "https://cheburcheck.ru/api/v1/check")
-CHEBURCHECK_TIMEOUT = float(os.environ.get("CHEBURCHECK_TIMEOUT", 8))
-CHEBURCHECK_WORKERS = int(os.environ.get("CHEBURCHECK_WORKERS", 2))
-CHEBURCHECK_RETRIES = int(os.environ.get("CHEBURCHECK_RETRIES", 3))
-CHEBURCHECK_MIN_INTERVAL = float(os.environ.get("CHEBURCHECK_MIN_INTERVAL", 0.5))
+CHEBURCHECK_TIMEOUT = float(os.environ.get("CHEBURCHECK_TIMEOUT", 5))
+CHEBURCHECK_WORKERS = int(os.environ.get("CHEBURCHECK_WORKERS", 6))
+CHEBURCHECK_RETRIES = int(os.environ.get("CHEBURCHECK_RETRIES", 1))
+CHEBURCHECK_MIN_INTERVAL = float(os.environ.get("CHEBURCHECK_MIN_INTERVAL", 0.1))
 XRAY_BIN = os.environ.get("XRAY_BIN", "xray")
 XRAY_STARTUP_DELAY = float(os.environ.get("XRAY_STARTUP_DELAY", 0.7))
 REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", 6))
@@ -48,8 +48,8 @@ INFO_FILE = os.environ.get("INFO_FILE", "info.txt")
 
 def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
     values = {
-        "title_main": "KnetaProxy | Основная подписка",
-        "title_top": "KnetaProxy | Топ-10",
+        "title_main": "KnetaWL | Основная подписка",
+        "title_top": "KnetaWL | Топ-10",
         "update_interval": "4",
         "support_url": "https://t.me/KnetaEx",
         "announce": "Если не работает, то нажмите 🔄, а затем 🕒",
