@@ -1,2 +1,5 @@
+https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt
+https://gitverse.ru/api/repos/gidro/white/raw/branch/master/subscription.txt
+https://raw.githubusercontent.com/btsk161/Freeinternet_byMygalaru.github.io/refs/heads/main/premium.txt
 https://hub.mos.ru/kfwl/auto/raw/main/wl
 https://hub.mos.ru/rkp/sub-roskompozor/raw/main/bl
