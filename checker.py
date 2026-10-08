@@ -48,11 +48,11 @@ INFO_FILE = os.environ.get("INFO_FILE", "info.txt")
 
 def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
     values = {
-        "title_main": "KnetaWL | Основная подписка",
-        "title_top": "KnetaWL | Топ-10",
-        "title_all": "KnetaWL | Все рабочие",
+        "title_main": "KnetaProxy | Основная Подписка",
+        "title_top": "KnetaProxy | Топ-10",
+        "title_all": "KnetaProxy | Полная Подписка",
         "update_interval": "4",
-        "support_url": "https://t.me/KnetaEx",
+        "support_url": "https://t.me/KnetaProxy",
         "announce": "Если не работает, то нажмите 🔄, а затем 🕒",
         "name_suffix": NAME_SUFFIX,
     }
