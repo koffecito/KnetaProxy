@@ -53,6 +53,29 @@ def parse_protocols(text: str) -> list[tuple[str, int]]:
     return [(name, get_int(text, pattern)) for name, pattern in names.items()]
 
 
+def parse_chebur_errors(text: str) -> list[str]:
+    match = re.search(r"^Cheburcheck FAIL:\s*\d+ \(blocked:\s*(\d+), HTTP:\s*(\d+), 429:\s*(\d+), 5xx:\s*(\d+), timeout:\s*(\d+), connection:\s*(\d+), other:\s*(\d+)\)$", text, re.MULTILINE)
+    if not match:
+        return []
+    blocked, http_total, http_429, http_5xx, timeout, connection, other = map(int, match.groups())
+    result = []
+    if blocked:
+        result.append(f"🚫 Blocked — {blocked}")
+    if http_429:
+        result.append(f"⏱ HTTP 429 — {http_429}")
+    if http_5xx:
+        result.append(f"💥 HTTP 5xx — {http_5xx}")
+    if timeout:
+        result.append(f"⌛ Timeout — {timeout}")
+    if connection:
+        result.append(f"🔌 Connection — {connection}")
+    if other:
+        result.append(f"⚠️ Other — {other}")
+    if http_total and not (http_429 or http_5xx):
+        result.append(f"🌐 HTTP — {http_total}")
+    return result
+
+
 def parse_countries(text: str) -> list[tuple[str, int]]:
     section = text.split("РАБОЧИЕ ПО СТРАНАМ:", 1)
     if len(section) != 2:
@@ -79,10 +102,10 @@ def parse_errors(text: str) -> list[str]:
     return result[:8]
 
 
-def subscription_urls() -> tuple[str, str]:
+def subscription_urls() -> tuple[str, str, str]:
     base = os.environ.get("SUBSCRIPTION_BASE_URL", "").strip().rstrip("/")
     if base:
-        return f"{base}/working.txt", f"{base}/top10.txt"
+        return f"{base}/working.txt", f"{base}/top10.txt", f"{base}/all.txt"
 
     repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
     branch = os.environ.get("GITHUB_REF_NAME", "main").strip() or "main"
@@ -91,8 +114,9 @@ def subscription_urls() -> tuple[str, str]:
         return (
             f"https://raw.githubusercontent.com/{repository}/{branch}/proxies/working.txt",
             f"https://raw.githubusercontent.com/{repository}/{branch}/proxies/top10.txt",
+            f"https://raw.githubusercontent.com/{repository}/{branch}/proxies/all.txt",
         )
-    return "URL не настроен", "URL не настроен"
+    return "URL не настроен", "URL не настроен", "URL не настроен"
 
 
 def build_message(report: str) -> str:
@@ -110,10 +134,11 @@ def build_message(report: str) -> str:
     protocols = parse_protocols(report)
     countries = parse_countries(report)
     errors = parse_errors(report)
-    main_url, top_url = subscription_urls()
+    chebur_errors = parse_chebur_errors(report)
+    main_url, top_url, all_url = subscription_urls()
 
     lines = [
-        "📊 <b>KnetaProxy</b>",
+        "📊 <b>KnetaWL</b>",
         "<b>Результаты проверки</b>",
         "",
         f"⚙️ Режим: <code>{mode}</code>",
@@ -139,7 +164,7 @@ def build_message(report: str) -> str:
         "",
         "━━━━━━━━━━━━━━━━━━",
         "",
-        "🔌 <b>Протоколы</b>",
+        "🔌 <b>Протоколы в основной подписке</b>",
         "",
     ]
     for name, count in protocols:
@@ -153,6 +178,10 @@ def build_message(report: str) -> str:
     if not country_lines:
         country_lines = "—"
     lines.append(f"<blockquote expandable>{country_lines}</blockquote>")
+
+    if chebur_errors:
+        lines += ["", "━━━━━━━━━━━━━━━━━━", "", "❗ <b>Ошибки Cheburcheck</b>", ""]
+        lines.extend(html.escape(error) for error in chebur_errors)
 
     if errors:
         lines += ["", "━━━━━━━━━━━━━━━━━━", "", "❗ <b>Ошибки источников</b>", ""]
@@ -169,6 +198,9 @@ def build_message(report: str) -> str:
         "",
         "🏆 <b>TOP 10</b>",
         f"<code>{html.escape(top_url)}</code>",
+        "",
+        "📚 <b>Все рабочие</b>",
+        f"<code>{html.escape(all_url)}</code>",
     ]
     return "\n".join(lines)
 

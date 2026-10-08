@@ -26,9 +26,9 @@ SUBSCRIPTIONS_FILE = os.environ.get("SUBSCRIPTIONS_FILE", "subscriptions.txt")
 TYPE_FILE = os.environ.get("TYPE_FILE", "type.txt")
 CHEBURCHECK_URL = os.environ.get("CHEBURCHECK_URL", "https://cheburcheck.ru/api/v1/check")
 CHEBURCHECK_TIMEOUT = float(os.environ.get("CHEBURCHECK_TIMEOUT", 5))
-CHEBURCHECK_WORKERS = int(os.environ.get("CHEBURCHECK_WORKERS", 6))
-CHEBURCHECK_RETRIES = int(os.environ.get("CHEBURCHECK_RETRIES", 1))
-CHEBURCHECK_MIN_INTERVAL = float(os.environ.get("CHEBURCHECK_MIN_INTERVAL", 0.1))
+CHEBURCHECK_WORKERS = int(os.environ.get("CHEBURCHECK_WORKERS", 4))
+CHEBURCHECK_RETRIES = int(os.environ.get("CHEBURCHECK_RETRIES", 2))
+CHEBURCHECK_MIN_INTERVAL = float(os.environ.get("CHEBURCHECK_MIN_INTERVAL", 0.8))
 XRAY_BIN = os.environ.get("XRAY_BIN", "xray")
 XRAY_STARTUP_DELAY = float(os.environ.get("XRAY_STARTUP_DELAY", 0.7))
 REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", 6))
@@ -50,6 +50,7 @@ def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
     values = {
         "title_main": "KnetaWL | Основная подписка",
         "title_top": "KnetaWL | Топ-10",
+        "title_all": "KnetaWL | Все рабочие",
         "update_interval": "4",
         "support_url": "https://t.me/KnetaEx",
         "announce": "Если не работает, то нажмите 🔄, а затем 🕒",
@@ -73,6 +74,7 @@ def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
 
 INFO = load_info_file()
 NAME_SUFFIX = INFO["name_suffix"]
+
 OUTPUT_DIR = "proxies"
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "working.txt")
 TOP_FILE = os.path.join(OUTPUT_DIR, "top10.txt")
@@ -84,6 +86,7 @@ TCP_TARGETS = [x.strip() for x in os.environ.get("TCP_TARGETS", "1.1.1.1:443").s
 
 _chebur_lock = threading.Lock()
 _chebur_last_call = 0.0
+_chebur_next_allowed = 0.0
 _chebur_cache: dict[str, tuple[bool, str]] = {}
 _chebur_cache_lock = threading.Lock()
 _country_lock = threading.Lock()
@@ -464,32 +467,55 @@ def host_ips(host: str) -> list[str]:
 
 
 def cheburcheck_ip(ip: str) -> tuple[bool, str]:
-    global _chebur_last_call
+    global _chebur_last_call, _chebur_next_allowed
     with _chebur_cache_lock:
         cached = _chebur_cache.get(ip)
         if cached is not None:
             return cached
+
+    last_error = ""
     for attempt in range(CHEBURCHECK_RETRIES + 1):
         with _chebur_lock:
-            wait = CHEBURCHECK_MIN_INTERVAL - (time.monotonic() - _chebur_last_call)
+            now = time.monotonic()
+            wait = max(0.0, _chebur_next_allowed - now, CHEBURCHECK_MIN_INTERVAL - (now - _chebur_last_call))
             if wait > 0:
                 time.sleep(wait)
             _chebur_last_call = time.monotonic()
+            _chebur_next_allowed = _chebur_last_call + CHEBURCHECK_MIN_INTERVAL
+
         try:
             r = requests.get(CHEBURCHECK_URL, params={"target": ip}, timeout=CHEBURCHECK_TIMEOUT)
-            if r.status_code in HTTP_TRANSIENT and attempt < CHEBURCHECK_RETRIES:
+            if r.status_code == 429:
+                last_error = http_error_text("Cheburcheck", r)
+                if attempt < CHEBURCHECK_RETRIES:
+                    retry_after = r.headers.get("Retry-After")
+                    try:
+                        delay = min(float(retry_after), 15.0) if retry_after else min(2 ** (attempt + 1), 8) + random.uniform(0.2, 0.8)
+                    except ValueError:
+                        delay = min(2 ** (attempt + 1), 8) + random.uniform(0.2, 0.8)
+                    with _chebur_lock:
+                        _chebur_next_allowed = max(_chebur_next_allowed, time.monotonic() + delay)
+                    time.sleep(delay)
+                    continue
+                return False, last_error
+
+            if r.status_code in {500, 502, 503, 504} and attempt < CHEBURCHECK_RETRIES:
                 retry_after = r.headers.get("Retry-After")
                 try:
                     delay = min(float(retry_after), 10.0) if retry_after else min(2 ** attempt, 4)
                 except ValueError:
                     delay = min(2 ** attempt, 4)
+                with _chebur_lock:
+                    _chebur_next_allowed = max(_chebur_next_allowed, time.monotonic() + delay)
                 time.sleep(delay)
                 continue
+
             if not r.ok:
                 result = (False, http_error_text("Cheburcheck", r))
                 with _chebur_cache_lock:
                     _chebur_cache[ip] = result
                 return result
+
             try:
                 data = r.json()
             except ValueError:
@@ -497,6 +523,7 @@ def cheburcheck_ip(ip: str) -> tuple[bool, str]:
                 with _chebur_cache_lock:
                     _chebur_cache[ip] = result
                 return result
+
             blocked = bool(data.get("blocked", False))
             subnets = data.get("blocked_subnets") or []
             result = ((not blocked and not subnets), "blocked" if blocked or subnets else "not_blocked")
@@ -504,14 +531,16 @@ def cheburcheck_ip(ip: str) -> tuple[bool, str]:
                 _chebur_cache[ip] = result
             return result
         except requests.RequestException as e:
+            last_error = exception_text("Cheburcheck", e)
             if attempt < CHEBURCHECK_RETRIES:
-                time.sleep(0.3)
+                delay = min(2 ** attempt, 4) + random.uniform(0.1, 0.4)
+                time.sleep(delay)
                 continue
-            result = (False, exception_text("Cheburcheck", e))
+            result = (False, last_error)
             with _chebur_cache_lock:
                 _chebur_cache[ip] = result
             return result
-    return False, "Cheburcheck: неизвестная ошибка"
+    return False, last_error or "Cheburcheck: неизвестная ошибка"
 
 
 def gate_chebur(proxy: ProxyConfig) -> tuple[bool, str]:
@@ -531,7 +560,8 @@ def gate_all(configs: list[ProxyConfig]) -> tuple[list[ProxyConfig], dict[str, i
     passed_by_index: dict[int, ProxyConfig] = {}
     stats = {
         "passed": 0, "failed": 0, "blocked": 0,
-        "http_errors": 0, "timeouts": 0, "connection_errors": 0,
+        "http_errors": 0, "http_429": 0, "http_5xx": 0, "http_other": 0,
+        "timeouts": 0, "connection_errors": 0,
         "dns_errors": 0, "other_errors": 0,
     }
     workers = max(1, CHEBURCHECK_WORKERS)
@@ -555,6 +585,12 @@ def gate_all(configs: list[ProxyConfig]) -> tuple[list[ProxyConfig], dict[str, i
                     stats["blocked"] += 1
                 elif "http " in low:
                     stats["http_errors"] += 1
+                    if "http 429" in low:
+                        stats["http_429"] += 1
+                    elif any(f"http {code}" in low for code in (500, 502, 503, 504)):
+                        stats["http_5xx"] += 1
+                    else:
+                        stats["http_other"] += 1
                 elif "timeout" in low:
                     stats["timeouts"] += 1
                 elif "ошибка соединения" in low or "connection" in low:
@@ -1025,11 +1061,17 @@ def save_results(
         random.shuffle(good)
     main = good[:MAX_PROXIES]
     top = good[:TOP_N_PROXIES]
+    all_working = good
     write_subscription(OUTPUT_FILE, main, INFO["title_main"])
     write_subscription(TOP_FILE, top, INFO["title_top"])
+    write_subscription(ALL_FILE, all_working, INFO["title_all"])
+
+    subscription_protocol_stats: dict[str, int] = {scheme: 0 for scheme in SUPPORTED_SCHEMES if scheme != "hy2"}
+    for item in main:
+        subscription_protocol_stats[item.proxy.scheme] = subscription_protocol_stats.get(item.proxy.scheme, 0) + 1
 
     country_counts: dict[str, int] = {}
-    for item in good:
+    for item in main:
         country_counts[item.exit_iso] = country_counts.get(item.exit_iso, 0) + 1
 
     lines = [
@@ -1045,7 +1087,7 @@ def save_results(
         f"Дубликатов удалено: {collect_stats['duplicates']}",
         f"Уникальных конфигов: {collect_stats['unique']}",
         f"После Cheburcheck: {gate_stats['passed']}",
-        f"Cheburcheck FAIL: {gate_stats['failed']} (blocked: {gate_stats['blocked']}, HTTP: {gate_stats['http_errors']}, timeout: {gate_stats['timeouts']}, connection: {gate_stats['connection_errors']}, other: {gate_stats['other_errors']})",
+        f"Cheburcheck FAIL: {gate_stats['failed']} (blocked: {gate_stats['blocked']}, HTTP: {gate_stats['http_errors']}, 429: {gate_stats['http_429']}, 5xx: {gate_stats['http_5xx']}, timeout: {gate_stats['timeouts']}, connection: {gate_stats['connection_errors']}, other: {gate_stats['other_errors']})",
         f"Режим проверки: {mode}",
         f"Xray OK: {check_stats['ok']}",
         f"Xray FAIL: {check_stats['xray_fail']}",
@@ -1054,11 +1096,11 @@ def save_results(
         f"Ошибка страны: {check_stats['country_fail']}",
         f"Другие FAIL: {check_stats['other_fail']}",
         "",
-        "РАБОЧИЕ ПО ПРОТОКОЛАМ:",
-        f"  VLESS: {protocol_stats.get('vless', 0)}",
-        f"  VMess: {protocol_stats.get('vmess', 0)}",
-        f"  Trojan: {protocol_stats.get('trojan', 0)}",
-        f"  Hysteria2/Hy2: {protocol_stats.get('hysteria2', 0)}",
+        "ПРОТОКОЛЫ ОСНОВНОЙ ПОДПИСКИ:",
+        f"  VLESS: {subscription_protocol_stats.get('vless', 0)}",
+        f"  VMess: {subscription_protocol_stats.get('vmess', 0)}",
+        f"  Trojan: {subscription_protocol_stats.get('trojan', 0)}",
+        f"  Hysteria2/Hy2: {subscription_protocol_stats.get('hysteria2', 0)}",
         "",
         "РАБОЧИЕ ПО СТРАНАМ:",
     ]
@@ -1072,6 +1114,7 @@ def save_results(
         f"ИТОГО рабочих: {len(good)}",
         f"Основная подписка: {len(main)} / {MAX_PROXIES}",
         f"Топ-подписка: {len(top)} / {TOP_N_PROXIES}",
+        f"Полная подписка: {len(all_working)}",
     ]
     if source_errors:
         lines += ["", "ОШИБКИ ОБРАЩЕНИЯ К САЙТАМ/ИСТОЧНИКАМ:"]
