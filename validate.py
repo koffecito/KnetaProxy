@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 
 REQUIRED_FILES = (
     "checker.py",
-    "subscriptions.txt",
     "type.txt",
     "info.txt",
     "telegram_notify.py",
@@ -37,24 +36,35 @@ def main() -> None:
         fail("type.txt должен содержать generate_204, tcp или no")
     print(f"[+] Режим: {mode}")
 
+    raw_sources = os.environ.get("SUBSCRIPTIONS", "")
+    if not raw_sources.strip():
+        fail("Не задан GitHub Secret SUBSCRIPTIONS (по одному URL или конфигурации на строку)")
+
     sources = []
-    with open("subscriptions.txt", "r", encoding="utf-8") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
+    for raw in raw_sources.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith(("http://", "https://")):
             parsed = urlparse(line)
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-                fail(f"Некорректный URL в subscriptions.txt: {line}")
+                fail("Некорректный URL в GitHub Secret SUBSCRIPTIONS")
+            sources.append(line)
+        else:
+            # Поддерживаемые прямые конфигурации также разрешены.
+            from checker import supported_link
+            if not supported_link(line):
+                fail("В SUBSCRIPTIONS обнаружена неподдерживаемая строка; содержимое не выводится из соображений безопасности")
             sources.append(line)
 
     if not sources:
-        fail("subscriptions.txt пуст")
+        fail("GitHub Secret SUBSCRIPTIONS не содержит источников или конфигураций")
 
-    duplicates = len(sources) - len(set(sources))
-    print(f"[+] Источников подписок: {len(sources)}")
+    urls = [item for item in sources if item.startswith(("http://", "https://"))]
+    duplicates = len(urls) - len(set(urls))
+    print(f"[+] Строк с источниками/конфигурациями: {len(sources)}")
     if duplicates:
-        print(f"[!] Дубликатов источников: {duplicates}")
+        print(f"[!] Дубликатов URL-источников: {duplicates}")
 
     os.makedirs("proxies", exist_ok=True)
     print("[+] Каталог proxies: OK")

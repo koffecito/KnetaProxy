@@ -22,7 +22,7 @@ import requests
 # КОНФИГУРАЦИЯ
 #----------
 
-SUBSCRIPTIONS_FILE = os.environ.get("SUBSCRIPTIONS_FILE", "subscriptions.txt")
+SUBSCRIPTIONS_ENV = "SUBSCRIPTIONS"
 TYPE_FILE = os.environ.get("TYPE_FILE", "type.txt")
 CHEBURCHECK_URL = os.environ.get("CHEBURCHECK_URL", "https://cheburcheck.ru/api/v1/check")
 CHEBURCHECK_TIMEOUT = float(os.environ.get("CHEBURCHECK_TIMEOUT", 5))
@@ -41,7 +41,6 @@ COUNTRY_RETRIES = int(os.environ.get("COUNTRY_RETRIES", 1))
 COUNTRY_MIN_INTERVAL = float(os.environ.get("COUNTRY_MIN_INTERVAL", 0.2))
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", 6))
 MAX_PROXIES = int(os.environ.get("MAX_PROXIES", 100))
-TOP_N_PROXIES = int(os.environ.get("TOP_N_PROXIES", 10))
 NAME_SUFFIX = os.environ.get("NAME_SUFFIX", "@KnetaEx")
 INFO_FILE = os.environ.get("INFO_FILE", "info.txt")
 
@@ -49,7 +48,6 @@ INFO_FILE = os.environ.get("INFO_FILE", "info.txt")
 def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
     values = {
         "title_main": "KnetaProxy | Основная Подписка",
-        "title_top": "KnetaProxy | Топ-10",
         "title_all": "KnetaProxy | Полная Подписка",
         "update_interval": "4",
         "support_url": "https://t.me/KnetaProxy",
@@ -77,7 +75,6 @@ NAME_SUFFIX = INFO["name_suffix"]
 
 OUTPUT_DIR = "proxies"
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "working.txt")
-TOP_FILE = os.path.join(OUTPUT_DIR, "top10.txt")
 ALL_FILE = os.path.join(OUTPUT_DIR, "all.txt")
 REPORT_FILE = os.path.join(OUTPUT_DIR, "report.txt")
 HISTORY_FILE = os.path.join(OUTPUT_DIR, "history.json")
@@ -357,7 +354,8 @@ def exception_text(service: str, exc: Exception) -> str:
         return f"{service}: некорректный URL"
     if isinstance(exc, requests.exceptions.TooManyRedirects):
         return f"{service}: слишком много перенаправлений"
-    return f"{service}: {type(exc).__name__}: {str(exc)[:120]}"
+    # Не включаем текст исключения: он может содержать секретный URL источника.
+    return f"{service}: {type(exc).__name__}"
 
 
 def fetch_subscription(url: str) -> tuple[list[str], str]:
@@ -375,7 +373,7 @@ def fetch_subscription(url: str) -> tuple[list[str], str]:
             if not r.ok:
                 return [], http_error_text("подписка", r)
             links = decode_subscription_text(r.text)
-            print(f"[+] {url}: найдено {len(links)} поддерживаемых ссылок")
+            print(f"[+] Источник обработан: найдено {len(links)} поддерживаемых ссылок")
             return links, ""
         except requests.RequestException as e:
             if attempt < SITE_RETRIES:
@@ -388,31 +386,35 @@ def fetch_subscription(url: str) -> tuple[list[str], str]:
 def load_subscription_sources() -> tuple[list[str], dict[str, int], list[str]]:
     stats = {"sources": 0, "sources_ok": 0, "sources_failed": 0, "unsupported_lines": 0}
     errors: list[str] = []
-    if not os.path.exists(SUBSCRIPTIONS_FILE):
-        error = f"нет файла {SUBSCRIPTIONS_FILE}"
+    raw_sources = os.environ.get(SUBSCRIPTIONS_ENV, "")
+    if not raw_sources.strip():
+        error = f"не задан GitHub Secret / переменная окружения {SUBSCRIPTIONS_ENV}"
         print(f"[!] {error}", file=sys.stderr)
         return [], stats, [error]
+
     result: list[str] = []
-    with open(SUBSCRIPTIONS_FILE, "r", encoding="utf-8") as f:
-        for raw in f:
-            source = raw.strip()
-            if not source or source.startswith("#"):
-                continue
-            if source.startswith(("http://", "https://")):
-                stats["sources"] += 1
-                links, error = fetch_subscription(source)
-                if error:
-                    stats["sources_failed"] += 1
-                    errors.append(f"{source}: {error}")
-                    print(f"[!] {source}: {error}", file=sys.stderr)
-                else:
-                    stats["sources_ok"] += 1
-                    result.extend(links)
-            elif supported_link(source):
-                result.append(source)
+    source_number = 0
+    for raw in raw_sources.splitlines():
+        source = raw.strip()
+        if not source or source.startswith("#"):
+            continue
+        if source.startswith(("http://", "https://")):
+            source_number += 1
+            stats["sources"] += 1
+            links, error = fetch_subscription(source)
+            if error:
+                stats["sources_failed"] += 1
+                errors.append(f"источник #{source_number}: {error}")
+                print(f"[!] Источник #{source_number}: {error}", file=sys.stderr)
             else:
-                stats["unsupported_lines"] += 1
-                print(f"[!] Пропущена неизвестная строка: {source[:100]}")
+                stats["sources_ok"] += 1
+                result.extend(links)
+        elif supported_link(source):
+            result.append(source)
+        else:
+            stats["unsupported_lines"] += 1
+            # Не печатаем строку: она может содержать приватную конфигурацию.
+            print("[!] Пропущена неизвестная строка в SUBSCRIPTIONS")
     return result, stats, errors
 
 
@@ -1086,10 +1088,8 @@ def save_results(
     if mode == "no":
         random.shuffle(good)
     main = good[:MAX_PROXIES]
-    top = good[:TOP_N_PROXIES]
     all_working = good
     write_subscription(OUTPUT_FILE, main, INFO["title_main"])
-    write_subscription(TOP_FILE, top, INFO["title_top"])
     write_subscription(ALL_FILE, all_working, INFO["title_all"])
 
     subscription_protocol_stats: dict[str, int] = {scheme: 0 for scheme in SUPPORTED_SCHEMES if scheme != "hy2"}
@@ -1139,7 +1139,6 @@ def save_results(
         "",
         f"ИТОГО рабочих: {len(good)}",
         f"Основная подписка: {len(main)} / {MAX_PROXIES}",
-        f"Топ-подписка: {len(top)} / {TOP_N_PROXIES}",
         f"Полная подписка: {len(all_working)}",
     ]
     if source_errors:

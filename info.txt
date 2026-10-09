@@ -1,5 +1,4 @@
 title_main=KnetaProxy | Основная Подписка
-title_top=KnetaProxy | Топ-10
 title_all=KnetaProxy | Полная Подписка 
 update_interval=4
 support_url=https://t.me/KnetaProxy
