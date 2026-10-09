@@ -136,7 +136,7 @@ def build_message(report: str) -> str:
         f"└ ❌ Недоступны: <b>{chebur_fail}</b>",
         "",
         "🚀 <b>Результат</b>",
-        f"└ ✅ Рабочих VPN: <b>{total}</b>",
+        f"└ ✅ Рабочих Proxy: <b>{total}</b>",
         "",
         "━━━━━━━━━━━━━━━━━━",
         "",
