@@ -46,7 +46,7 @@ jobs:
       - name: Run checker
         env:
           SUBSCRIPTIONS: ${{ secrets.SUBSCRIPTIONS }}
-          MAX_WORKERS: "8"
+          MAX_WORKERS: "12"
           REQUEST_TIMEOUT: "8"
         run: python checker.py
 
