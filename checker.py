@@ -124,7 +124,7 @@ def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
         "update_interval": "4",
         "support_url": "https://t.me/KnetaProxy",
         "announce": "Если не работает, то нажмите 🔄, а затем 🕒",
-        "name_suffix": os.environ.get("NAME_SUFFIX", "@KnetaEx"),
+        "name_suffix": os.environ.get("NAME_SUFFIX", "@KnetaProxy"),
     }
     if not os.path.exists(path):
         return values
