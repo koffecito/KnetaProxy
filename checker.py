@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
 import base64
-import concurrent.futures
+import hashlib
+import hmac
 import ipaddress
+import itertools
 import json
 import os
 import random
@@ -12,7 +14,10 @@ import sys
 import tempfile
 import threading
 import time
+from collections import Counter
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from typing import Callable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import requests
@@ -20,29 +25,96 @@ import requests
 
 #---------
 # КОНФИГУРАЦИЯ
-#----------
+#---------
+
+def env_int(name: str, default: int) -> int:
+    return int(os.environ.get(name, default))
+
+
+def env_float(name: str, default: float) -> float:
+    return float(os.environ.get(name, default))
+
 
 SUBSCRIPTIONS_ENV = "SUBSCRIPTIONS"
 TYPE_FILE = os.environ.get("TYPE_FILE", "type.txt")
-CHEBURCHECK_URL = os.environ.get("CHEBURCHECK_URL", "https://cheburcheck.ru/api/v1/check")
-CHEBURCHECK_TIMEOUT = float(os.environ.get("CHEBURCHECK_TIMEOUT", 5))
-CHEBURCHECK_WORKERS = int(os.environ.get("CHEBURCHECK_WORKERS", 4))
-CHEBURCHECK_RETRIES = int(os.environ.get("CHEBURCHECK_RETRIES", 2))
-CHEBURCHECK_MIN_INTERVAL = float(os.environ.get("CHEBURCHECK_MIN_INTERVAL", 0.8))
-XRAY_BIN = os.environ.get("XRAY_BIN", "xray")
-XRAY_STARTUP_DELAY = float(os.environ.get("XRAY_STARTUP_DELAY", 1.2))
-REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", 6))
-EXIT_IP_API_URL = os.environ.get("EXIT_IP_API_URL", "https://api.ipify.org?format=json")
-EXIT_IP_TIMEOUT = float(os.environ.get("EXIT_IP_TIMEOUT", 5))
-EXIT_IP_RETRIES = int(os.environ.get("EXIT_IP_RETRIES", 1))
-COUNTRY_API_URL = os.environ.get("COUNTRY_API_URL", "https://api.country.is")
-COUNTRY_TIMEOUT = float(os.environ.get("COUNTRY_TIMEOUT", 5))
-COUNTRY_RETRIES = int(os.environ.get("COUNTRY_RETRIES", 1))
-COUNTRY_MIN_INTERVAL = float(os.environ.get("COUNTRY_MIN_INTERVAL", 0.2))
-MAX_WORKERS = int(os.environ.get("MAX_WORKERS", 6))
-MAX_PROXIES = int(os.environ.get("MAX_PROXIES", 100))
-NAME_SUFFIX = os.environ.get("NAME_SUFFIX", "@KnetaEx")
 INFO_FILE = os.environ.get("INFO_FILE", "info.txt")
+VALID_MODES = ("generate_204", "tcp", "no")
+
+CHEBURCHECK_URL = os.environ.get("CHEBURCHECK_URL", "https://cheburcheck.ru/api/v1/check")
+CHEBURCHECK_TIMEOUT = env_float("CHEBURCHECK_TIMEOUT", 5)
+CHEBURCHECK_WORKERS = env_int("CHEBURCHECK_WORKERS", 4)
+CHEBURCHECK_RETRIES = env_int("CHEBURCHECK_RETRIES", 2)
+CHEBURCHECK_MIN_INTERVAL = env_float("CHEBURCHECK_MIN_INTERVAL", 0.8)
+CHEBURCHECK_MAX_INTERVAL = env_float("CHEBURCHECK_MAX_INTERVAL", 10)
+CHEBURCHECK_CACHE_HOURS = env_float("CHEBURCHECK_CACHE_HOURS", 24)
+CHEBURCHECK_RECHECK_DELAY = env_float("CHEBURCHECK_RECHECK_DELAY", 10)
+
+XRAY_BIN = os.environ.get("XRAY_BIN", "xray")
+XRAY_READY_TIMEOUT = env_float("XRAY_READY_TIMEOUT", 5)
+REQUEST_TIMEOUT = env_float("REQUEST_TIMEOUT", 5)
+
+EXIT_IP_API_URLS = tuple(
+    x.strip()
+    for x in os.environ.get(
+        "EXIT_IP_API_URLS",
+        os.environ.get("EXIT_IP_API_URL", "https://api.ipify.org?format=json,https://icanhazip.com"),
+    ).split(",")
+    if x.strip()
+)
+EXIT_IP_TIMEOUT = env_float("EXIT_IP_TIMEOUT", 5)
+EXIT_IP_RETRIES = env_int("EXIT_IP_RETRIES", 1)
+
+COUNTRY_API_URL = os.environ.get("COUNTRY_API_URL", "https://api.country.is")
+COUNTRY_TIMEOUT = env_float("COUNTRY_TIMEOUT", 5)
+COUNTRY_RETRIES = env_int("COUNTRY_RETRIES", 2)
+COUNTRY_MIN_INTERVAL = env_float("COUNTRY_MIN_INTERVAL", 0.2)
+COUNTRY_MAX_INTERVAL = env_float("COUNTRY_MAX_INTERVAL", 5)
+COUNTRY_CACHE_DAYS = env_float("COUNTRY_CACHE_DAYS", 14)
+
+MAX_WORKERS = env_int("MAX_WORKERS", 16)
+MAX_PROXIES = env_int("MAX_PROXIES", 100)
+HISTORY_KEEP_RUNS = env_int("HISTORY_KEEP_RUNS", 30)
+
+SITE_RETRIES = env_int("SITE_RETRIES", 2)
+SITE_RETRY_BACKOFF = env_float("SITE_RETRY_BACKOFF", 0.8)
+HTTP_TRANSIENT = {429, 500, 502, 503, 504}
+
+GENERATE_204_URLS = tuple(
+    x.strip()
+    for x in os.environ.get(
+        "GENERATE_204_URLS",
+        "https://www.gstatic.com/generate_204,https://cp.cloudflare.com/generate_204",
+    ).split(",")
+    if x.strip()
+)
+
+
+def parse_tcp_target(target: str) -> tuple[str, int] | None:
+    host, _, port_text = target.strip().rpartition(":")
+    host = host.strip("[]")
+    try:
+        port = int(port_text)
+    except ValueError:
+        return None
+    return (host, port) if host and 0 < port < 65536 else None
+
+
+TCP_TARGETS: list[tuple[str, int]] = []
+for _target in os.environ.get("TCP_TARGETS", "1.1.1.1:443").split(","):
+    if not _target.strip():
+        continue
+    _parsed = parse_tcp_target(_target)
+    if _parsed is None:
+        print(f"[!] TCP_TARGETS: пропущена неверная цель '{_target.strip()}'", file=sys.stderr)
+    else:
+        TCP_TARGETS.append(_parsed)
+
+SUPPORTED_SCHEMES = ("vless", "vmess", "trojan", "hysteria2", "hy2")
+OUTPUT_DIR = "proxies"
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, "working.txt")
+ALL_FILE = os.path.join(OUTPUT_DIR, "all.txt")
+REPORT_FILE = os.path.join(OUTPUT_DIR, "report.txt")
+HISTORY_FILE = os.path.join(OUTPUT_DIR, "history.json")
 
 
 def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
@@ -52,7 +124,7 @@ def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
         "update_interval": "4",
         "support_url": "https://t.me/KnetaProxy",
         "announce": "Если не работает, то нажмите 🔄, а затем 🕒",
-        "name_suffix": NAME_SUFFIX,
+        "name_suffix": os.environ.get("NAME_SUFFIX", "@KnetaEx"),
     }
     if not os.path.exists(path):
         return values
@@ -73,40 +145,25 @@ def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
 INFO = load_info_file()
 NAME_SUFFIX = INFO["name_suffix"]
 
-OUTPUT_DIR = "proxies"
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, "working.txt")
-ALL_FILE = os.path.join(OUTPUT_DIR, "all.txt")
-REPORT_FILE = os.path.join(OUTPUT_DIR, "report.txt")
-HISTORY_FILE = os.path.join(OUTPUT_DIR, "history.json")
-TMP_DIR = "tmp_configs"
-GENERATE_204_URLS = tuple(
-    x.strip()
-    for x in os.environ.get(
-        "GENERATE_204_URLS",
-        "https://www.gstatic.com/generate_204,https://clients3.google.com/generate_204,https://connectivitycheck.gstatic.com/generate_204"
-    ).split(",")
-    if x.strip()
-)
-TCP_TARGETS = [x.strip() for x in os.environ.get("TCP_TARGETS", "1.1.1.1:443").split(",") if x.strip()]
+_log_lock = threading.Lock()
 
-_chebur_lock = threading.Lock()
-_chebur_last_call = 0.0
-_chebur_next_allowed = 0.0
-_chebur_cache: dict[str, tuple[bool, str]] = {}
-_chebur_cache_lock = threading.Lock()
-_country_lock = threading.Lock()
-_country_last_call = 0.0
-_country_cache: dict[str, tuple[str, str]] = {}
 
-SITE_RETRIES = int(os.environ.get("SITE_RETRIES", 2))
-SITE_RETRY_BACKOFF = float(os.environ.get("SITE_RETRY_BACKOFF", 0.8))
-HTTP_TRANSIENT = {429, 500, 502, 503, 504}
-SUPPORTED_SCHEMES = ("vless", "vmess", "trojan", "hysteria2", "hy2")
+def log(message: str) -> None:
+    with _log_lock:
+        print(message, flush=True)
+
+
+def write_text_atomic(path: str, text: str) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
 
 
 #---------
 # СТРАНЫ
-#----------
+#---------
 
 COUNTRY_NAMES_RU = {
     "RU": "Россия", "US": "США", "DE": "Германия", "NL": "Нидерланды",
@@ -129,7 +186,6 @@ COUNTRY_NAMES_RU = {
     "BA": "Босния и Герцеговина", "MK": "Северная Македония", "ME": "Черногория",
 }
 
-
 def country_flag(iso: str) -> str:
     iso = (iso or "").upper()
     if len(iso) != 2 or not iso.isalpha():
@@ -143,29 +199,195 @@ def country_name(iso: str) -> str:
 
 
 #---------
-# ТИП ПРОВЕРКИ
-#----------
+# РЕЖИМ ПРОВЕРКИ
+#---------
 
-@dataclass(frozen=True)
-class CheckConfig:
-    mode: str
+def load_mode(path: str = TYPE_FILE) -> str:
+    if not os.path.exists(path):
+        return "generate_204"
+    with open(path, "r", encoding="utf-8") as f:
+        raw = f.read().strip().lower()
+    if raw in VALID_MODES:
+        return raw
+    if raw:
+        print(f"[!] {path}: неизвестный режим '{raw}', использую generate_204", file=sys.stderr)
+    return "generate_204"
 
 
-def load_check_config(path: str = TYPE_FILE) -> CheckConfig:
-    mode = "generate_204"
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            raw = f.read().strip().lower()
-        if raw in {"generate_204", "tcp", "no"}:
-            mode = raw
-        elif raw:
-            print(f"[!] {path}: неизвестный режим '{raw}', использую generate_204", file=sys.stderr)
-    return CheckConfig(mode=mode)
+#---------
+# HTTP
+#---------
+
+def http_error_text(service: str, response: requests.Response) -> str:
+    reason = (response.reason or "").strip()
+    suffix = f" {reason}" if reason else ""
+    return f"{service}: HTTP {response.status_code}{suffix}"
+
+
+def exception_text(service: str, exc: Exception) -> str:
+    if isinstance(exc, requests.exceptions.ConnectTimeout):
+        return f"{service}: timeout при подключении"
+    if isinstance(exc, requests.exceptions.ReadTimeout):
+        return f"{service}: timeout ожидания ответа"
+    if isinstance(exc, requests.exceptions.Timeout):
+        return f"{service}: timeout"
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return f"{service}: ошибка соединения"
+    if isinstance(exc, requests.exceptions.InvalidURL):
+        return f"{service}: некорректный URL"
+    if isinstance(exc, requests.exceptions.TooManyRedirects):
+        return f"{service}: слишком много перенаправлений"
+    return f"{service}: {type(exc).__name__}"
+
+
+def parse_retry_after(response: requests.Response | None) -> float | None:
+    value = response.headers.get("Retry-After") if response is not None else None
+    if not value:
+        return None
+    try:
+        return max(float(value), 0.0)
+    except ValueError:
+        return None
+
+
+def retry_delay(response: requests.Response | None, attempt: int, max_delay: float) -> float:
+    retry_after = parse_retry_after(response)
+    if retry_after is not None:
+        return min(retry_after, max_delay)
+    return min(SITE_RETRY_BACKOFF * (2 ** attempt) + random.uniform(0, 0.3), max_delay)
+
+
+def get_with_retry(
+    url: str,
+    *,
+    timeout: float,
+    retries: int = 0,
+    retry_network: bool = False,
+    max_delay: float = 10.0,
+    before: Callable[[], None] | None = None,
+    on_response: Callable[[requests.Response], None] | None = None,
+    **kwargs,
+) -> requests.Response:
+    for attempt in range(retries + 1):
+        is_last = attempt == retries
+        if before:
+            before()
+        try:
+            response = requests.get(url, timeout=timeout, **kwargs)
+        except requests.RequestException:
+            if is_last or not retry_network:
+                raise
+            delay = retry_delay(None, attempt, max_delay)
+        else:
+            if on_response:
+                on_response(response)
+            if response.status_code not in HTTP_TRANSIENT or is_last:
+                return response
+            delay = retry_delay(response, attempt, max_delay)
+        time.sleep(delay)
+    raise RuntimeError("unreachable")
+
+
+class RateLimiter:
+
+    SUCCESSES_TO_RELAX = 15
+
+    def __init__(self, interval: float, max_interval: float | None = None) -> None:
+        self.base = interval
+        self.interval = interval
+        self.max_interval = max(interval, max_interval or interval)
+        self.calls = 0
+        self.throttled = 0
+        self._next = 0.0
+        self._blocked_until = 0.0
+        self._last_adjust = 0.0
+        self._ok_streak = 0
+        self._lock = threading.Lock()
+
+    def wait(self) -> None:
+        with self._lock:
+            self.calls += 1
+            now = time.monotonic()
+            start = max(now, self._next)
+            self._next = start + self.interval
+        while True:
+            with self._lock:
+                start = max(start, self._blocked_until)
+            now = time.monotonic()
+            if start <= now:
+                return
+            time.sleep(start - now)
+
+    def throttle(self, retry_after: float | None = None) -> None:
+        with self._lock:
+            now = time.monotonic()
+            self.throttled += 1
+            self._ok_streak = 0
+            if now - self._last_adjust >= self.interval:
+                self.interval = min(self.max_interval, max(self.interval * 2, self.base))
+                self._last_adjust = now
+            pause = min(max(retry_after or 0.0, self.interval), 60.0)
+            self._blocked_until = max(self._blocked_until, now + pause)
+            self._next = max(self._next, self._blocked_until)
+
+    def success(self) -> None:
+        with self._lock:
+            self._ok_streak += 1
+            if self._ok_streak >= self.SUCCESSES_TO_RELAX and self.interval > self.base:
+                self.interval = max(self.base, self.interval * 0.8)
+                self._ok_streak = 0
+
+    def feedback(self, response: requests.Response) -> None:
+        if response.status_code == 429:
+            self.throttle(parse_retry_after(response))
+        elif response.ok:
+            self.success()
+
+
+class TtlCache:
+
+    def __init__(self, entries: dict, ttl_seconds: float) -> None:
+        self.entries = entries
+        self.ttl = ttl_seconds
+
+    @staticmethod
+    def key(ip: str) -> str:
+        secret = os.environ.get(SUBSCRIPTIONS_ENV, "").encode("utf-8")
+        return hmac.new(secret, ip.encode("utf-8"), hashlib.sha256).hexdigest()[:20]
+
+    def get(self, ip: str) -> dict | None:
+        if self.ttl <= 0:
+            return None
+        item = self.entries.get(self.key(ip))
+        if isinstance(item, dict) and item.get("exp", 0) > time.time():
+            return item
+        return None
+
+    def put(self, ip: str, **fields) -> None:
+        if self.ttl > 0:
+            self.entries[self.key(ip)] = {**fields, "exp": int(time.time() + self.ttl * random.uniform(0.25, 1.0))}
+
+    def prune(self) -> None:
+        now = time.time()
+        for key in [k for k, v in self.entries.items() if not isinstance(v, dict) or v.get("exp", 0) <= now]:
+            del self.entries[key]
 
 
 #---------
 # МОДЕЛЬ КОНФИГА
-#----------
+#---------
+
+def transport_of(params: dict[str, str]) -> str:
+    value = params.get("type", params.get("net", "tcp")).lower()
+    return {
+        "tcp": "raw",
+        "raw": "raw",
+        "ws": "websocket",
+        "websocket": "websocket",
+        "kcp": "mkcp",
+        "mkcp": "mkcp",
+    }.get(value, value)
+
 
 @dataclass
 class ProxyConfig:
@@ -179,6 +401,7 @@ class ProxyConfig:
     extra: dict = field(default_factory=dict)
 
     def identity(self) -> tuple:
+        extra = {k: v for k, v in self.extra.items() if k != "ps"}
         return (
             self.scheme,
             self.host.lower(),
@@ -186,22 +409,11 @@ class ProxyConfig:
             self.user,
             self.password,
             tuple(sorted(self.params.items())),
-            json.dumps(self.extra, sort_keys=True, ensure_ascii=False),
+            json.dumps(extra, sort_keys=True, ensure_ascii=False),
         )
 
-    def transport(self) -> str:
-        value = self.params.get("type", self.params.get("net", "tcp")).lower()
-        return {
-            "tcp": "raw",
-            "raw": "raw",
-            "ws": "websocket",
-            "websocket": "websocket",
-            "grpc": "grpc",
-            "xhttp": "xhttp",
-            "httpupgrade": "httpupgrade",
-            "kcp": "mkcp",
-            "mkcp": "mkcp",
-        }.get(value, value)
+    def key(self) -> str:
+        return config_key(json.dumps(self.identity(), ensure_ascii=False, sort_keys=True))
 
     def to_link(self, name: str | None = None) -> str:
         title = name if name is not None else self.name
@@ -210,66 +422,44 @@ class ProxyConfig:
             data["ps"] = title
             raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()
             return "vmess://" + base64.b64encode(raw).decode()
-        if self.scheme == "vless":
-            query = urlencode(self.params, doseq=False)
-            link = f"vless://{quote(self.user, safe='')}@{self.host}:{self.port}"
-            if query:
-                link += "?" + query
-            return link + ("#" + quote(title, safe="") if title else "")
-        if self.scheme == "trojan":
-            query = urlencode(self.params, doseq=False)
-            link = f"trojan://{quote(self.password, safe='')}@{self.host}:{self.port}"
-            if query:
-                link += "?" + query
-            return link + ("#" + quote(title, safe="") if title else "")
-        if self.scheme == "hysteria2":
-            query = urlencode(self.params, doseq=False)
-            link = f"hysteria2://{quote(self.password, safe='')}@{self.host}:{self.port}"
-            if query:
-                link += "?" + query
-            return link + ("#" + quote(title, safe="") if title else "")
-        return ""
+        if self.scheme not in {"vless", "trojan", "hysteria2"}:
+            return ""
+        secret = self.user if self.scheme == "vless" else self.password
+        host = f"[{self.host}]" if ":" in self.host else self.host
+        link = f"{self.scheme}://{quote(secret, safe=':' if self.scheme == 'hysteria2' else '')}@{host}:{self.port}"
+        query = urlencode(self.params)
+        if query:
+            link += "?" + query
+        return link + ("#" + quote(title, safe="") if title else "")
+
+
+def config_key(text: str) -> str:
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()
 
 
 #---------
 # ПАРСИНГ
-#----------
-
-def first_param(params: dict[str, list[str]], key: str, default: str = "") -> str:
-    values = params.get(key)
-    return values[0] if values else default
-
+#---------
 
 def parse_query(query: str) -> dict[str, str]:
-    return {k: unquote(v[0]) if v else "" for k, v in parse_qs(query, keep_blank_values=True).items()}
+    return {k: v[0] if v else "" for k, v in parse_qs(query, keep_blank_values=True).items()}
 
 
-def parse_vless(link: str) -> ProxyConfig | None:
+def parse_uri_link(link: str) -> ProxyConfig | None:
     try:
         u = urlparse(link)
-        if u.scheme.lower() != "vless" or not u.username or not u.hostname or not u.port:
+        scheme = u.scheme.lower()
+        if scheme == "hy2":
+            scheme = "hysteria2"
+        if scheme not in {"vless", "trojan", "hysteria2"} or not u.hostname or not u.port:
             return None
-        return ProxyConfig("vless", u.hostname, u.port, unquote(u.username), name=unquote(u.fragment), params=parse_query(u.query))
-    except Exception:
-        return None
-
-
-def parse_trojan(link: str) -> ProxyConfig | None:
-    try:
-        u = urlparse(link)
-        if u.scheme.lower() != "trojan" or not u.username or not u.hostname or not u.port:
+        secret = unquote(u.username or "")
+        if scheme == "hysteria2" and u.password:
+            secret += ":" + unquote(u.password)
+        if not secret and scheme != "hysteria2":
             return None
-        return ProxyConfig("trojan", u.hostname, u.port, password=unquote(u.username), name=unquote(u.fragment), params=parse_query(u.query))
-    except Exception:
-        return None
-
-
-def parse_hysteria2(link: str) -> ProxyConfig | None:
-    try:
-        u = urlparse(link)
-        if u.scheme.lower() not in {"hysteria2", "hy2"} or not u.hostname or not u.port:
-            return None
-        return ProxyConfig("hysteria2", u.hostname, u.port, password=unquote(u.username or ""), name=unquote(u.fragment), params=parse_query(u.query))
+        fields = {"user": secret} if scheme == "vless" else {"password": secret}
+        return ProxyConfig(scheme, u.hostname, u.port, name=unquote(u.fragment), params=parse_query(u.query), **fields)
     except Exception:
         return None
 
@@ -302,25 +492,26 @@ def parse_vmess(link: str) -> ProxyConfig | None:
 
 
 def parse_link(link: str) -> ProxyConfig | None:
-    scheme = link.split(":", 1)[0].lower() if ":" in link else ""
-    if scheme == "vless":
-        return parse_vless(link)
+    scheme = link.split(":", 1)[0].lower()
     if scheme == "vmess":
         return parse_vmess(link)
-    if scheme == "trojan":
-        return parse_trojan(link)
-    if scheme in {"hysteria2", "hy2"}:
-        return parse_hysteria2(link)
-    return None
+    return parse_uri_link(link)
 
 
 def supported_link(line: str) -> bool:
-    return line.lower().startswith(("vless://", "vmess://", "trojan://", "hysteria2://", "hy2://"))
+    return line.lower().startswith(tuple(f"{s}://" for s in SUPPORTED_SCHEMES))
 
 
 #---------
 # ПОДПИСКИ
-#----------
+#---------
+
+def iter_source_lines(raw: str) -> Iterator[str]:
+    for line in raw.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            yield line
+
 
 def decode_subscription_text(raw: str) -> list[str]:
     text = raw.strip()
@@ -329,134 +520,118 @@ def decode_subscription_text(raw: str) -> list[str]:
     if direct:
         return direct
     try:
-        decoded = base64.b64decode(text + "=" * (-len(text) % 4)).decode("utf-8", errors="ignore")
+        compact = "".join(text.split()).replace("-", "+").replace("_", "/")
+        decoded = base64.b64decode(compact + "=" * (-len(compact) % 4)).decode("utf-8", errors="ignore")
     except Exception:
         decoded = text
     return [x.strip() for x in decoded.splitlines() if supported_link(x.strip())]
 
 
-def http_error_text(service: str, response: requests.Response) -> str:
-    reason = (response.reason or "").strip()
-    suffix = f" {reason}" if reason else ""
-    return f"{service}: HTTP {response.status_code}{suffix}"
-
-
-def exception_text(service: str, exc: Exception) -> str:
-    if isinstance(exc, requests.exceptions.ConnectTimeout):
-        return f"{service}: timeout при подключении"
-    if isinstance(exc, requests.exceptions.ReadTimeout):
-        return f"{service}: timeout ожидания ответа"
-    if isinstance(exc, requests.exceptions.Timeout):
-        return f"{service}: timeout"
-    if isinstance(exc, requests.exceptions.ConnectionError):
-        return f"{service}: ошибка соединения"
-    if isinstance(exc, requests.exceptions.InvalidURL):
-        return f"{service}: некорректный URL"
-    if isinstance(exc, requests.exceptions.TooManyRedirects):
-        return f"{service}: слишком много перенаправлений"
-    # Не включаем текст исключения: он может содержать секретный URL источника.
-    return f"{service}: {type(exc).__name__}"
-
-
 def fetch_subscription(url: str) -> tuple[list[str], str]:
-    for attempt in range(SITE_RETRIES + 1):
-        try:
-            r = requests.get(url, timeout=15, allow_redirects=True)
-            if r.status_code in HTTP_TRANSIENT and attempt < SITE_RETRIES:
-                retry_after = r.headers.get("Retry-After")
-                try:
-                    delay = min(float(retry_after), 10.0) if retry_after else SITE_RETRY_BACKOFF * (2 ** attempt)
-                except ValueError:
-                    delay = SITE_RETRY_BACKOFF * (2 ** attempt)
-                time.sleep(delay)
-                continue
-            if not r.ok:
-                return [], http_error_text("подписка", r)
-            links = decode_subscription_text(r.text)
-            print(f"[+] Источник обработан: найдено {len(links)} поддерживаемых ссылок")
-            return links, ""
-        except requests.RequestException as e:
-            if attempt < SITE_RETRIES:
-                time.sleep(SITE_RETRY_BACKOFF * (2 ** attempt))
-                continue
-            return [], exception_text("подписка", e)
-    return [], "подписка: неизвестная ошибка"
+    try:
+        r = get_with_retry(
+            url,
+            timeout=15,
+            retries=SITE_RETRIES,
+            retry_network=True,
+            headers={"User-Agent": "KnetaProxy/1.0"},
+        )
+    except requests.RequestException as e:
+        return [], exception_text("источник", e)
+    if not r.ok:
+        return [], http_error_text("источник", r)
+    return decode_subscription_text(r.text), ""
 
 
-def load_subscription_sources() -> tuple[list[str], dict[str, int], list[str]]:
-    stats = {"sources": 0, "sources_ok": 0, "sources_failed": 0, "unsupported_lines": 0}
+@dataclass
+class CollectStats:
+    sources: int = 0
+    sources_ok: int = 0
+    sources_failed: int = 0
+    unsupported_lines: int = 0
+    received: int = 0
+    invalid: int = 0
+    duplicates: int = 0
+    unique: int = 0
+    by_scheme: Counter = field(default_factory=Counter)
+
+
+def load_subscription_sources() -> tuple[list[str], CollectStats, list[str]]:
+    stats = CollectStats()
     errors: list[str] = []
-    raw_sources = os.environ.get(SUBSCRIPTIONS_ENV, "")
-    if not raw_sources.strip():
-        error = f"не задан GitHub Secret / переменная окружения {SUBSCRIPTIONS_ENV}"
-        print(f"[!] {error}", file=sys.stderr)
-        return [], stats, [error]
+    raw = os.environ.get(SUBSCRIPTIONS_ENV, "")
+    items = list(iter_source_lines(raw))
+    urls = list(dict.fromkeys(x for x in items if x.lower().startswith(("http://", "https://"))))
 
-    result: list[str] = []
-    source_number = 0
-    for raw in raw_sources.splitlines():
-        source = raw.strip()
-        if not source or source.startswith("#"):
-            continue
-        if source.startswith(("http://", "https://")):
-            source_number += 1
-            stats["sources"] += 1
-            links, error = fetch_subscription(source)
-            if error:
-                stats["sources_failed"] += 1
-                errors.append(f"источник #{source_number}: {error}")
-                print(f"[!] Источник #{source_number}: {error}", file=sys.stderr)
+    links: list[str] = []
+    with ThreadPoolExecutor(max_workers=max(1, min(8, len(urls)))) as pool:
+        pending = {url: pool.submit(fetch_subscription, url) for url in urls}
+        seen_urls: set[str] = set()
+        for item in items:
+            if item in pending:
+                if item in seen_urls:
+                    continue
+                seen_urls.add(item)
+                stats.sources += 1
+                found, error = pending[item].result()
+                number = stats.sources
+                if error:
+                    stats.sources_failed += 1
+                    errors.append(f"Источник #{number}: {error}")
+                    print(f"[!] Источник #{number}: {error}", file=sys.stderr)
+                else:
+                    stats.sources_ok += 1
+                    print(f"[+] Источник #{number}: {len(found)} ссылок")
+                    links.extend(found)
+            elif supported_link(item):
+                links.append(item)
             else:
-                stats["sources_ok"] += 1
-                result.extend(links)
-        elif supported_link(source):
-            result.append(source)
-        else:
-            stats["unsupported_lines"] += 1
-            # Не печатаем строку: она может содержать приватную конфигурацию.
-            print("[!] Пропущена неизвестная строка в SUBSCRIPTIONS")
-    return result, stats, errors
+                stats.unsupported_lines += 1
+                print("[!] Неизвестная строка в SUBSCRIPTIONS пропущена", file=sys.stderr)
+    return links, stats, errors
 
 
-def collect_configs() -> tuple[list[ProxyConfig], dict[str, int], list[str]]:
-    links, source_stats, source_errors = load_subscription_sources()
-    stats = {
-        "received": len(links),
-        "invalid": 0,
-        "duplicates": 0,
-        "unique": 0,
-        "unsupported_lines": source_stats["unsupported_lines"],
-        "sources": source_stats["sources"],
-        "sources_ok": source_stats["sources_ok"],
-        "sources_failed": source_stats["sources_failed"],
-    }
-    for scheme in SUPPORTED_SCHEMES:
-        stats[f"received_{scheme}"] = 0
-        stats[f"unique_{scheme}"] = 0
+def collect_configs() -> tuple[list[ProxyConfig], CollectStats, list[str]]:
+    links, stats, errors = load_subscription_sources()
+    stats.received = len(links)
     result: list[ProxyConfig] = []
-    seen = set()
+    seen: set[str] = set()
     for link in links:
-        scheme = link.split(":", 1)[0].lower() if ":" in link else ""
-        if scheme in SUPPORTED_SCHEMES:
-            stats[f"received_{scheme}"] += 1
+        stats.by_scheme[link.split(":", 1)[0].lower()] += 1
         proxy = parse_link(link)
         if proxy is None:
-            stats["invalid"] += 1
+            stats.invalid += 1
             continue
-        key = proxy.identity()
+        key = proxy.key()
         if key in seen:
-            stats["duplicates"] += 1
+            stats.duplicates += 1
             continue
         seen.add(key)
         result.append(proxy)
-        stats[f"unique_{proxy.scheme}"] += 1
-    stats["unique"] = len(result)
-    return result, stats, source_errors
+    stats.unique = len(result)
+    return result, stats, errors
 
 
 #---------
 # CHEBURCHECK
-#----------
+#---------
+
+TRANSIENT_KINDS = {"http_429", "http_5xx", "timeout", "connection"}
+_chebur_limiter = RateLimiter(CHEBURCHECK_MIN_INTERVAL, CHEBURCHECK_MAX_INTERVAL)
+_country_limiter = RateLimiter(COUNTRY_MIN_INTERVAL, COUNTRY_MAX_INTERVAL)
+_geo_cache = TtlCache({}, 0)
+
+
+@dataclass(frozen=True)
+class Verdict:
+    ok: bool
+    kind: str
+    detail: str = ""
+
+    @property
+    def transient(self) -> bool:
+        return self.kind in TRANSIENT_KINDS
+
 
 def host_ips(host: str) -> list[str]:
     try:
@@ -466,171 +641,79 @@ def host_ips(host: str) -> list[str]:
         pass
     try:
         infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
-    except socket.gaierror:
+    except (socket.gaierror, UnicodeError, OSError):
         return []
-    result = []
-    for info in infos:
-        ip = info[4][0]
-        if ip not in result:
-            result.append(ip)
-    return result
+    return list(dict.fromkeys(info[4][0] for info in infos))
 
 
-def cheburcheck_ip(ip: str) -> tuple[bool, str]:
-    global _chebur_last_call, _chebur_next_allowed
-    with _chebur_cache_lock:
-        cached = _chebur_cache.get(ip)
-        if cached is not None:
-            return cached
-
-    last_error = ""
-    for attempt in range(CHEBURCHECK_RETRIES + 1):
-        with _chebur_lock:
-            now = time.monotonic()
-            wait = max(0.0, _chebur_next_allowed - now, CHEBURCHECK_MIN_INTERVAL - (now - _chebur_last_call))
-            if wait > 0:
-                time.sleep(wait)
-            _chebur_last_call = time.monotonic()
-            _chebur_next_allowed = _chebur_last_call + CHEBURCHECK_MIN_INTERVAL
-
-        try:
-            r = requests.get(CHEBURCHECK_URL, params={"target": ip}, timeout=CHEBURCHECK_TIMEOUT)
-            if r.status_code == 429:
-                last_error = http_error_text("Cheburcheck", r)
-                if attempt < CHEBURCHECK_RETRIES:
-                    retry_after = r.headers.get("Retry-After")
-                    try:
-                        delay = min(float(retry_after), 15.0) if retry_after else min(2 ** (attempt + 1), 8) + random.uniform(0.2, 0.8)
-                    except ValueError:
-                        delay = min(2 ** (attempt + 1), 8) + random.uniform(0.2, 0.8)
-                    with _chebur_lock:
-                        _chebur_next_allowed = max(_chebur_next_allowed, time.monotonic() + delay)
-                    time.sleep(delay)
-                    continue
-                return False, last_error
-
-            if r.status_code in {500, 502, 503, 504} and attempt < CHEBURCHECK_RETRIES:
-                retry_after = r.headers.get("Retry-After")
-                try:
-                    delay = min(float(retry_after), 10.0) if retry_after else min(2 ** attempt, 4)
-                except ValueError:
-                    delay = min(2 ** attempt, 4)
-                with _chebur_lock:
-                    _chebur_next_allowed = max(_chebur_next_allowed, time.monotonic() + delay)
-                time.sleep(delay)
-                continue
-
-            if not r.ok:
-                result = (False, http_error_text("Cheburcheck", r))
-                with _chebur_cache_lock:
-                    _chebur_cache[ip] = result
-                return result
-
-            try:
-                data = r.json()
-            except ValueError:
-                result = (False, "Cheburcheck: некорректный JSON")
-                with _chebur_cache_lock:
-                    _chebur_cache[ip] = result
-                return result
-
-            blocked = bool(data.get("blocked", False))
-            subnets = data.get("blocked_subnets") or []
-            result = ((not blocked and not subnets), "blocked" if blocked or subnets else "not_blocked")
-            with _chebur_cache_lock:
-                _chebur_cache[ip] = result
-            return result
-        except requests.RequestException as e:
-            last_error = exception_text("Cheburcheck", e)
-            if attempt < CHEBURCHECK_RETRIES:
-                delay = min(2 ** attempt, 4) + random.uniform(0.1, 0.4)
-                time.sleep(delay)
-                continue
-            result = (False, last_error)
-            with _chebur_cache_lock:
-                _chebur_cache[ip] = result
-            return result
-    return False, last_error or "Cheburcheck: неизвестная ошибка"
+def resolve_hosts(hosts: set[str]) -> dict[str, list[str]]:
+    ordered = sorted(hosts)
+    if not ordered:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(32, len(ordered))) as pool:
+        return dict(zip(ordered, pool.map(host_ips, ordered)))
 
 
-def gate_chebur(proxy: ProxyConfig) -> tuple[bool, str]:
-    ips = host_ips(proxy.host)
-    if not ips:
-        return False, "не удалось определить IP"
-    reasons = []
-    for ip in ips:
-        ok, reason = cheburcheck_ip(ip)
-        if ok:
-            return True, f"IP {ip} доступен в РФ"
-        reasons.append(f"{ip}: {reason}")
-    return False, "Cheburcheck: " + "; ".join(reasons[:3])
+def cheburcheck_ip(ip: str) -> Verdict:
+    try:
+        r = get_with_retry(
+            CHEBURCHECK_URL,
+            params={"target": ip},
+            timeout=CHEBURCHECK_TIMEOUT,
+            retries=CHEBURCHECK_RETRIES,
+            retry_network=True,
+            max_delay=15,
+            before=_chebur_limiter.wait,
+            on_response=_chebur_limiter.feedback,
+        )
+    except requests.RequestException as e:
+        if isinstance(e, requests.Timeout):
+            kind = "timeout"
+        elif isinstance(e, requests.ConnectionError):
+            kind = "connection"
+        else:
+            kind = "other"
+        return Verdict(False, kind, exception_text("Cheburcheck", e))
+    if not r.ok:
+        if r.status_code == 429:
+            kind = "http_429"
+        elif r.status_code in HTTP_TRANSIENT:
+            kind = "http_5xx"
+        else:
+            kind = "http_other"
+        return Verdict(False, kind, http_error_text("Cheburcheck", r))
+    try:
+        data = r.json()
+    except ValueError:
+        return Verdict(False, "bad_json", "Cheburcheck: некорректный JSON")
+    if not isinstance(data, dict):
+        return Verdict(False, "bad_json", "Cheburcheck: неожиданный формат ответа")
+    if data.get("blocked") or data.get("blocked_subnets"):
+        return Verdict(False, "blocked", "заблокирован в РФ")
+    return Verdict(True, "ok", "доступен в РФ")
 
 
-def gate_all(configs: list[ProxyConfig]) -> tuple[list[ProxyConfig], dict[str, int]]:
-    passed_by_index: dict[int, ProxyConfig] = {}
-    stats = {
-        "passed": 0, "failed": 0, "blocked": 0,
-        "http_errors": 0, "http_429": 0, "http_5xx": 0, "http_other": 0,
-        "timeouts": 0, "connection_errors": 0,
-        "dns_errors": 0, "other_errors": 0,
-    }
-    workers = max(1, CHEBURCHECK_WORKERS)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(gate_chebur, p): i for i, p in enumerate(configs)}
-        for i, future in enumerate(concurrent.futures.as_completed(futures), 1):
-            index = futures[future]
-            proxy = configs[index]
-            try:
-                ok, reason = future.result()
-            except Exception as e:
-                ok, reason = False, exception_text("Cheburcheck", e)
-            print(f"[gate {i}/{len(configs)}] {'PASS' if ok else 'FAIL':4} {proxy.name or proxy.host:30} {reason}")
-            if ok:
-                passed_by_index[index] = proxy
-                stats["passed"] += 1
-            else:
-                stats["failed"] += 1
-                low = reason.lower()
-                if "blocked" in low:
-                    stats["blocked"] += 1
-                elif "http " in low:
-                    stats["http_errors"] += 1
-                    if "http 429" in low:
-                        stats["http_429"] += 1
-                    elif any(f"http {code}" in low for code in (500, 502, 503, 504)):
-                        stats["http_5xx"] += 1
-                    else:
-                        stats["http_other"] += 1
-                elif "timeout" in low:
-                    stats["timeouts"] += 1
-                elif "ошибка соединения" in low or "connection" in low:
-                    stats["connection_errors"] += 1
-                elif "ip" in low and "определ" in low:
-                    stats["dns_errors"] += 1
-                else:
-                    stats["other_errors"] += 1
-    passed = [passed_by_index[i] for i in range(len(configs)) if i in passed_by_index]
-    return passed, stats
+def safe_cheburcheck(ip: str) -> Verdict:
+    try:
+        return cheburcheck_ip(ip)
+    except Exception as e:
+        return Verdict(False, "other", f"Cheburcheck: {type(e).__name__}")
 
 
 #---------
 # XRAY
-#----------
+#---------
 
 def find_free_port() -> int:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
-def add_stream_settings(params: dict[str, str], scheme: str) -> dict:
-    transport = "hysteria" if scheme == "hysteria2" else ProxyConfig(scheme, "", 1, params=params).transport()
+def add_stream_settings(params: dict[str, str]) -> dict:
+    transport = transport_of(params)
     security = params.get("security", "none").lower()
-    if security in {"tls", "reality"}:
-        security = "tls" if security == "tls" else "reality"
-    elif params.get("tls", "").lower() in {"tls", "1", "true"}:
+    if security not in {"tls", "reality"} and params.get("tls", "").lower() in {"tls", "1", "true"}:
         security = "tls"
     stream = {"network": transport, "security": security}
     sni = params.get("sni") or params.get("servername") or params.get("serverName")
@@ -677,20 +760,24 @@ def build_xray_config(proxy: ProxyConfig, local_port: int) -> dict:
         outbound = {
             "protocol": "vless",
             "settings": {"vnext": [{"address": proxy.host, "port": proxy.port, "users": [user]}]},
-            "streamSettings": add_stream_settings(proxy.params, proxy.scheme),
+            "streamSettings": add_stream_settings(proxy.params),
         }
     elif proxy.scheme == "vmess":
-        user = {"id": proxy.user, "alterId": int(proxy.extra.get("aid", 0) or 0), "security": proxy.extra.get("scy", "auto") or "auto"}
+        try:
+            alter_id = int(proxy.extra.get("aid", 0) or 0)
+        except (TypeError, ValueError):
+            alter_id = 0
+        user = {"id": proxy.user, "alterId": alter_id, "security": proxy.extra.get("scy", "auto") or "auto"}
         outbound = {
             "protocol": "vmess",
             "settings": {"vnext": [{"address": proxy.host, "port": proxy.port, "users": [user]}]},
-            "streamSettings": add_stream_settings(proxy.params, proxy.scheme),
+            "streamSettings": add_stream_settings(proxy.params),
         }
     elif proxy.scheme == "trojan":
         outbound = {
             "protocol": "trojan",
             "settings": {"servers": [{"address": proxy.host, "port": proxy.port, "password": proxy.password}]},
-            "streamSettings": add_stream_settings(proxy.params, proxy.scheme),
+            "streamSettings": add_stream_settings(proxy.params),
         }
     elif proxy.scheme == "hysteria2":
         hparams = proxy.params
@@ -720,9 +807,56 @@ def build_xray_config(proxy: ProxyConfig, local_port: int) -> dict:
     return {"log": {"loglevel": "none"}, "inbounds": [inbound], "outbounds": [outbound]}
 
 
+def wait_port(proc: subprocess.Popen, port: int, timeout: float = XRAY_READY_TIMEOUT) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return False
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+                return proc.poll() is None
+        except OSError:
+            time.sleep(0.05)
+    return False
+
+
+def stop_xray(proc: subprocess.Popen | None) -> None:
+    if proc is None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+
+
+def launch_xray(proxy: ProxyConfig, workdir: str) -> tuple[subprocess.Popen, int] | None:
+    for _ in range(3):
+        port = find_free_port()
+        fd, cfg_path = tempfile.mkstemp(prefix="cfg_", suffix=".json", dir=workdir)
+        proc = None
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(build_xray_config(proxy, port), f, ensure_ascii=False)
+            proc = subprocess.Popen([XRAY_BIN, "run", "-c", cfg_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if wait_port(proc, port):
+                return proc, port
+            stop_xray(proc)
+        except BaseException:
+            stop_xray(proc)
+            raise
+        finally:
+            try:
+                os.remove(cfg_path)
+            except OSError:
+                pass
+    return None
+
+
 #---------
-# ПРОВЕРКА ЧЕРЕЗ VPN
-#----------
+# ПРОВЕРКА ЧЕРЕЗ XRAY
+#---------
 
 @dataclass
 class CheckResult:
@@ -731,330 +865,346 @@ class CheckResult:
     error: str = ""
     exit_ip: str = ""
     exit_iso: str = ""
-    exit_country: str = ""
-    check_reason: str = ""
+    stage: str = ""
 
 
 def socks_proxies(port: int) -> dict[str, str]:
-    return {
-        "http": f"socks5h://127.0.0.1:{port}",
-        "https": f"socks5h://127.0.0.1:{port}",
-    }
+    url = f"socks5h://127.0.0.1:{port}"
+    return {"http": url, "https": url}
 
 
 def check_generate_204(proxies: dict[str, str]) -> tuple[bool, str]:
-    errors: list[str] = []
-
+    errors = []
     for url in GENERATE_204_URLS:
-        for attempt in range(SITE_RETRIES + 1):
-            try:
-                r = requests.get(
-                    url,
-                    proxies=proxies,
-                    timeout=REQUEST_TIMEOUT,
-                    allow_redirects=False,
-                    headers={"Connection": "close", "User-Agent": "KnetaProxy/1.0"},
-                )
-                if r.status_code == 204:
-                    return True, "generate_204 OK"
-
-                error = http_error_text("generate_204", r)
-                if r.status_code in HTTP_TRANSIENT and attempt < SITE_RETRIES:
-                    retry_after = r.headers.get("Retry-After", "")
-                    try:
-                        delay = max(0.0, float(retry_after)) if retry_after else SITE_RETRY_BACKOFF * (2 ** attempt)
-                    except ValueError:
-                        delay = SITE_RETRY_BACKOFF * (2 ** attempt)
-                    time.sleep(min(delay, 5.0))
-                    continue
-
-                errors.append(f"{url}: {error}")
-                break
-            except requests.RequestException as e:
-                error = exception_text("generate_204", e)
-                if attempt < SITE_RETRIES:
-                    time.sleep(SITE_RETRY_BACKOFF * (2 ** attempt))
-                    continue
-                errors.append(f"{url}: {error}")
-                break
-
-    if errors:
-        return False, "generate_204: " + " | ".join(errors[:3])
-    return False, "generate_204: нет доступных тестовых URL"
+        try:
+            r = requests.get(
+                url,
+                proxies=proxies,
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=False,
+                headers={"Connection": "close", "User-Agent": "KnetaProxy/1.0"},
+            )
+        except requests.RequestException as e:
+            errors.append(exception_text("generate_204", e))
+            continue
+        if r.status_code == 204:
+            return True, "generate_204 OK"
+        if r.status_code == 429:
+            return True, "generate_204: 429 (узел отвечает)"
+        errors.append(http_error_text("generate_204", r))
+    return False, errors[-1] if errors else "generate_204: нет URL для проверки"
 
 
-def socks5_connect(local_port: int, host: str, port: int) -> socket.socket:
-    sock = socket.create_connection(("127.0.0.1", local_port), timeout=REQUEST_TIMEOUT)
-    sock.settimeout(REQUEST_TIMEOUT)
-    sock.sendall(b"\x05\x01\x00")
-    if sock.recv(2) != b"\x05\x00":
-        sock.close()
-        raise OSError("SOCKS5 handshake failed")
-    try:
-        ip = ipaddress.ip_address(host)
-        atyp = b"\x01" if ip.version == 4 else b"\x04"
-        addr = ip.packed
-    except ValueError:
-        encoded = host.encode("idna")
-        if len(encoded) > 255:
-            sock.close()
-            raise OSError("hostname too long")
-        atyp = b"\x03"
-        addr = bytes([len(encoded)]) + encoded
-    request = b"\x05\x01\x00" + atyp + addr + port.to_bytes(2, "big")
-    sock.sendall(request)
-    head = sock.recv(4)
-    if len(head) != 4 or head[1] != 0:
-        sock.close()
-        raise OSError(f"SOCKS5 connect failed: {head[1] if len(head) > 1 else 'unknown'}")
-    atyp = head[3]
-    if atyp == 1:
-        need = 4
-    elif atyp == 4:
-        need = 16
-    elif atyp == 3:
-        size = sock.recv(1)
-        if not size:
-            sock.close()
-            raise OSError("SOCKS5 invalid response")
-        need = size[0]
-    else:
-        sock.close()
-        raise OSError("SOCKS5 invalid address type")
-    remaining = need + 2
-    while remaining:
-        chunk = sock.recv(remaining)
+def recv_exact(sock: socket.socket, size: int) -> bytes:
+    data = b""
+    while len(data) < size:
+        chunk = sock.recv(size - len(data))
         if not chunk:
-            sock.close()
-            raise OSError("SOCKS5 truncated response")
-        remaining -= len(chunk)
-    return sock
+            raise OSError("SOCKS5: соединение закрыто")
+        data += chunk
+    return data
+
+
+def socks5_probe(local_port: int, host: str, port: int) -> None:
+    with socket.create_connection(("127.0.0.1", local_port), timeout=REQUEST_TIMEOUT) as sock:
+        sock.settimeout(REQUEST_TIMEOUT)
+        sock.sendall(b"\x05\x01\x00")
+        if recv_exact(sock, 2) != b"\x05\x00":
+            raise OSError("SOCKS5 handshake failed")
+        try:
+            ip = ipaddress.ip_address(host)
+            atyp = b"\x01" if ip.version == 4 else b"\x04"
+            addr = ip.packed
+        except ValueError:
+            encoded = host.encode("idna")
+            if len(encoded) > 255:
+                raise OSError("hostname too long")
+            atyp = b"\x03"
+            addr = bytes([len(encoded)]) + encoded
+        sock.sendall(b"\x05\x01\x00" + atyp + addr + port.to_bytes(2, "big"))
+        head = recv_exact(sock, 4)
+        if head[1] != 0:
+            raise OSError(f"SOCKS5 connect failed: {head[1]}")
+        if head[3] == 1:
+            need = 4
+        elif head[3] == 4:
+            need = 16
+        elif head[3] == 3:
+            need = recv_exact(sock, 1)[0]
+        else:
+            raise OSError("SOCKS5 invalid address type")
+        recv_exact(sock, need + 2)
 
 
 def check_tcp(local_port: int) -> tuple[bool, str]:
-    for target in TCP_TARGETS:
-        if target.startswith("[") and "]" in target:
-            host, _, port_text = target[1:].partition("]:")
-        else:
-            host, _, port_text = target.rpartition(":")
+    for host, port in TCP_TARGETS:
         try:
-            port = int(port_text)
-        except ValueError:
-            return False, f"tcp: неверная цель {target}"
-        try:
-            sock = socks5_connect(local_port, host, port)
-            sock.close()
+            socks5_probe(local_port, host, port)
         except Exception as e:
             return False, f"tcp: {str(e)[:100]}"
     return True, "tcp OK"
 
 
+def parse_ip_response(response: requests.Response) -> str:
+    try:
+        data = response.json()
+        text = str(data.get("ip", "")) if isinstance(data, dict) else ""
+    except ValueError:
+        text = response.text
+    text = text.strip()
+    ipaddress.ip_address(text)
+    return text
+
+
 def get_exit_ip(proxies: dict[str, str]) -> tuple[str, str]:
-    last_error = ""
-    for attempt in range(EXIT_IP_RETRIES + 1):
+    last_error = "exit-ip API: нет URL для проверки"
+    for url in EXIT_IP_API_URLS:
         try:
-            r = requests.get(EXIT_IP_API_URL, proxies=proxies, timeout=EXIT_IP_TIMEOUT)
-            if r.status_code in HTTP_TRANSIENT and attempt < EXIT_IP_RETRIES:
-                time.sleep(SITE_RETRY_BACKOFF * (2 ** attempt))
-                continue
-            if not r.ok:
-                return "", http_error_text("exit-ip API", r)
-            try:
-                data = r.json()
-            except ValueError:
-                return "", "exit-ip API: некорректный JSON"
-            ip = str(data.get("ip", "")).strip()
-            try:
-                ipaddress.ip_address(ip)
-            except ValueError:
-                return "", "exit-ip API: вернул некорректный IP"
-            return ip, ""
+            r = get_with_retry(url, proxies=proxies, timeout=EXIT_IP_TIMEOUT, retries=EXIT_IP_RETRIES, retry_network=True)
         except requests.RequestException as e:
             last_error = exception_text("exit-ip API", e)
-            if attempt < EXIT_IP_RETRIES:
-                time.sleep(SITE_RETRY_BACKOFF * (2 ** attempt))
-    return "", last_error or "exit-ip API: неизвестная ошибка"
-
-
-def lookup_country_direct(ip: str) -> tuple[str, str]:
-    global _country_last_call
-    with _country_lock:
-        cached = _country_cache.get(ip)
-        if cached:
-            return cached
-    last_error = ""
-    for attempt in range(COUNTRY_RETRIES + 1):
-        with _country_lock:
-            wait = COUNTRY_MIN_INTERVAL - (time.monotonic() - _country_last_call)
-            if wait > 0:
-                time.sleep(wait)
-            _country_last_call = time.monotonic()
+            continue
+        if not r.ok:
+            last_error = http_error_text("exit-ip API", r)
+            continue
         try:
-            r = requests.get(f"{COUNTRY_API_URL}/{ip}", timeout=COUNTRY_TIMEOUT)
-            if r.status_code in HTTP_TRANSIENT and attempt < COUNTRY_RETRIES:
-                retry_after = r.headers.get("Retry-After")
-                try:
-                    delay = min(float(retry_after), 10.0) if retry_after else SITE_RETRY_BACKOFF * (2 ** attempt)
-                except ValueError:
-                    delay = SITE_RETRY_BACKOFF * (2 ** attempt)
-                time.sleep(delay)
-                continue
-            if not r.ok:
-                last_error = http_error_text("country API", r)
-                continue
-            try:
-                data = r.json()
-            except ValueError:
-                last_error = "country API: некорректный JSON"
-                continue
-            iso = str(data.get("country", "")).strip().upper()
-            if not iso:
-                last_error = "country API: страна не указана"
-                continue
-            result = (iso, country_name(iso))
-            with _country_lock:
-                _country_cache[ip] = result
-            return result
-        except requests.RequestException as e:
-            last_error = exception_text("country API", e)
-            if attempt < COUNTRY_RETRIES:
-                time.sleep(SITE_RETRY_BACKOFF * (2 ** attempt))
-    return "", last_error or "country API: неизвестная ошибка"
+            return parse_ip_response(r), ""
+        except ValueError:
+            last_error = "exit-ip API: вернул некорректный IP"
+    return "", last_error
 
 
-def check_single_proxy(proxy: ProxyConfig, mode: str) -> CheckResult:
-    local_port = find_free_port()
-    cfg_path = ""
+_country_cache: dict[str, str] = {}
+
+
+def lookup_country(ip: str) -> tuple[str, str]:
+    cached = _country_cache.get(ip)
+    if cached:
+        return cached, ""
+    saved = _geo_cache.get(ip)
+    if saved and saved.get("iso"):
+        _country_cache[ip] = saved["iso"]
+        return saved["iso"], ""
+    try:
+        r = get_with_retry(
+            f"{COUNTRY_API_URL}/{ip}",
+            timeout=COUNTRY_TIMEOUT,
+            retries=COUNTRY_RETRIES,
+            retry_network=True,
+            before=_country_limiter.wait,
+            on_response=_country_limiter.feedback,
+        )
+    except requests.RequestException as e:
+        return "", exception_text("country API", e)
+    if not r.ok:
+        return "", http_error_text("country API", r)
+    try:
+        iso = str(r.json().get("country", "")).strip().upper()
+    except (ValueError, AttributeError):
+        return "", "country API: некорректный JSON"
+    if not iso:
+        return "", "country API: страна не указана"
+    _country_cache[ip] = iso
+    _geo_cache.put(ip, iso=iso)
+    return iso, ""
+
+
+def check_single_proxy(proxy: ProxyConfig, mode: str, workdir: str) -> CheckResult:
     proc = None
     try:
-        config = build_xray_config(proxy, local_port)
-        os.makedirs(TMP_DIR, exist_ok=True)
-        fd, cfg_path = tempfile.mkstemp(prefix="cfg_", suffix=".json", dir=TMP_DIR)
-        os.close(fd)
-        with open(cfg_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False)
-        proc = subprocess.Popen([XRAY_BIN, "run", "-c", cfg_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(XRAY_STARTUP_DELAY)
-        if proc.poll() is not None:
-            return CheckResult(proxy, False, "xray не запустился", check_reason="xray")
-        proxies = socks_proxies(local_port)
+        launched = launch_xray(proxy, workdir)
+        if launched is None:
+            return CheckResult(proxy, False, "xray не запустился", stage="xray")
+        proc, port = launched
+        proxies = socks_proxies(port)
         if mode == "generate_204":
             ok, reason = check_generate_204(proxies)
-            if not ok:
-                return CheckResult(proxy, False, reason, check_reason="alive")
         elif mode == "tcp":
-            ok, reason = check_tcp(local_port)
-            if not ok:
-                return CheckResult(proxy, False, reason, check_reason="alive")
-        exit_ip, exit_error = get_exit_ip(proxies)
+            ok, reason = check_tcp(port)
+        else:
+            ok, reason = True, ""
+        if not ok:
+            return CheckResult(proxy, False, reason, stage=mode)
+        exit_ip, error = get_exit_ip(proxies)
         if not exit_ip:
-            return CheckResult(proxy, False, exit_error, check_reason="exit_ip")
-        exit_iso, exit_country = lookup_country_direct(exit_ip)
-        if not exit_iso:
-            return CheckResult(proxy, False, exit_country or "country API: не удалось определить страну", exit_ip=exit_ip, check_reason="country")
-        return CheckResult(proxy, True, exit_ip=exit_ip, exit_iso=exit_iso, exit_country=exit_country, check_reason="ok")
+            return CheckResult(proxy, False, error, stage="exit_ip")
+        iso, error = lookup_country(exit_ip)
+        if not iso:
+            return CheckResult(proxy, False, error or "country API: не удалось определить страну", exit_ip=exit_ip, stage="country")
+        return CheckResult(proxy, True, exit_ip=exit_ip, exit_iso=iso, stage="ok")
     except Exception as e:
-        return CheckResult(proxy, False, f"{type(e).__name__}: {str(e)[:110]}", check_reason="other")
+        return CheckResult(proxy, False, f"{type(e).__name__}: {str(e)[:110]}", stage="other")
     finally:
-        if proc is not None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-        if cfg_path:
-            try:
-                os.remove(cfg_path)
-            except OSError:
-                pass
+        stop_xray(proc)
 
 
-def check_all(configs: list[ProxyConfig], mode: str) -> tuple[list[CheckResult], dict[str, int], dict[str, int]]:
-    results_by_index: dict[int, CheckResult] = {}
-    stats = {
-        "ok": 0, "xray_fail": 0, "alive_fail": 0, "exit_ip_fail": 0,
-        "country_fail": 0, "other_fail": 0,
-        "generate_204_fail": 0, "tcp_fail": 0,
-    }
-    protocol_stats: dict[str, int] = {scheme: 0 for scheme in ("vless", "vmess", "trojan", "hysteria2")}
-    workers = max(1, MAX_WORKERS)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(check_single_proxy, p, mode): i for i, p in enumerate(configs)}
-        for i, future in enumerate(concurrent.futures.as_completed(futures), 1):
-            index = futures[future]
+#---------
+# КОНВЕЙЕР: Cheburcheck -> Xray
+#---------
+
+@dataclass
+class GateStats:
+    passed: int = 0
+    failed: int = 0
+    kinds: Counter = field(default_factory=Counter)
+    cached: int = 0
+    requests: int = 0
+    throttled: int = 0
+
+
+def proxy_label(proxy: ProxyConfig) -> str:
+    host = f"[{proxy.host}]" if ":" in proxy.host else proxy.host
+    return f"{proxy.scheme}://{host}:{proxy.port}"
+
+
+def run_pipeline(
+    configs: list[ProxyConfig], mode: str, workdir: str, gate_cache: TtlCache
+) -> tuple[list[CheckResult], GateStats, Counter]:
+    host_map = resolve_hosts({p.host.lower() for p in configs})
+    config_ips = [host_map.get(p.host.lower(), []) for p in configs]
+    ip_users: dict[str, list[int]] = {}
+    for idx, ips in enumerate(config_ips):
+        for ip in ips:
+            ip_users.setdefault(ip, []).append(idx)
+    print(f"[+] Уникальных IP для Cheburcheck: {len(ip_users)}")
+
+    verdicts: dict[str, Verdict] = {}
+    submitted: set[int] = set()
+    check_futures: dict[Future, int] = {}
+    counter = itertools.count(1)
+
+    def check_and_log(proxy: ProxyConfig) -> CheckResult:
+        result = check_single_proxy(proxy, mode, workdir)
+        status = "OK  " if result.ok else "FAIL"
+        extra = f"{result.exit_ip} | {result.exit_iso}" if result.ok else result.error
+        log(f"[check {next(counter)}] {status} {proxy_label(proxy)} {extra}")
+        return result
+
+    gate = GateStats()
+
+    def accept(ip: str, verdict: Verdict) -> None:
+        verdicts[ip] = verdict
+        if verdict.ok:
+            for idx in ip_users[ip]:
+                if idx not in submitted:
+                    submitted.add(idx)
+                    check_futures[check_pool.submit(check_and_log, configs[idx])] = idx
+
+    with ThreadPoolExecutor(max_workers=max(1, MAX_WORKERS)) as check_pool, \
+            ThreadPoolExecutor(max_workers=max(1, CHEBURCHECK_WORKERS)) as gate_pool:
+        pending = []
+        for ip in ip_users:
+            saved = gate_cache.get(ip)
+            if saved is None:
+                pending.append(ip)
+                continue
+            gate.cached += 1
+            ok = bool(saved.get("ok"))
+            accept(ip, Verdict(ok, "ok" if ok else "blocked", "доступен в РФ (кэш)" if ok else "заблокирован в РФ (кэш)"))
+        print(f"[+] Cheburcheck: из кэша {gate.cached} IP, нужно запросить {len(pending)}")
+        for round_no in range(2):
+            if not pending:
+                break
+            if round_no:
+                log(f"[gate] повторная проверка {len(pending)} IP после временных ошибок Cheburcheck")
+                time.sleep(CHEBURCHECK_RECHECK_DELAY)
+            gate_futures = {gate_pool.submit(safe_cheburcheck, ip): ip for ip in pending}
+            for n, future in enumerate(as_completed(gate_futures), 1):
+                ip = gate_futures[future]
+                verdict = future.result()
+                log(f"[gate {n}/{len(pending)}] {'PASS' if verdict.ok else 'FAIL'} {ip} {verdict.detail}")
+                if verdict.kind in {"ok", "blocked"}:
+                    gate_cache.put(ip, ok=int(verdict.ok))
+                accept(ip, verdict)
+            pending = [
+                ip for ip in pending
+                if verdicts[ip].transient and any(idx not in submitted for idx in ip_users[ip])
+            ]
+
+        gate.requests = _chebur_limiter.calls
+        gate.throttled = _chebur_limiter.throttled
+        for idx in range(len(configs)):
+            if idx in submitted:
+                gate.passed += 1
+                continue
+            gate.failed += 1
+            ips = config_ips[idx]
+            if not ips:
+                gate.kinds["dns"] += 1
+                log(f"[gate] FAIL {proxy_label(configs[idx])} не удалось определить IP")
+                continue
+            vs = [verdicts[ip] for ip in ips]
+            gate.kinds[next((v for v in vs if v.kind == "blocked"), vs[0]).kind] += 1
+        print(f"[+] Cheburcheck: прошло {gate.passed}, не прошло {gate.failed}")
+
+        results: dict[int, CheckResult] = {}
+        for future in as_completed(check_futures):
+            idx = check_futures[future]
             try:
-                result = future.result()
+                results[idx] = future.result()
             except Exception as e:
-                result = CheckResult(configs[index], False, f"worker: {type(e).__name__}: {str(e)[:100]}", check_reason="other")
-            results_by_index[index] = result
-            if result.ok:
-                stats["ok"] += 1
-                protocol_stats[result.proxy.scheme] = protocol_stats.get(result.proxy.scheme, 0) + 1
-                info = f"exit={result.exit_ip} | {result.exit_iso}"
-                status = "OK"
-            else:
-                key = result.check_reason
-                if key == "xray":
-                    stats["xray_fail"] += 1
-                elif key == "alive":
-                    stats["alive_fail"] += 1
-                    if result.error.startswith("generate_204:"):
-                        stats["generate_204_fail"] += 1
-                    elif result.error.startswith("tcp:"):
-                        stats["tcp_fail"] += 1
-                elif key == "exit_ip":
-                    stats["exit_ip_fail"] += 1
-                elif key == "country":
-                    stats["country_fail"] += 1
-                else:
-                    stats["other_fail"] += 1
-                info = result.error
-                status = "FAIL"
-            print(f"[{i}/{len(configs)}] {status:4} {result.proxy.name or result.proxy.host:30} {info}")
-    results = [results_by_index[i] for i in range(len(configs))]
-    return results, stats, protocol_stats
+                results[idx] = CheckResult(configs[idx], False, f"{type(e).__name__}", stage="other")
+
+    ordered = [results[i] for i in sorted(results)]
+    return ordered, gate, Counter(r.stage for r in ordered)
 
 
 #---------
 # ИСТОРИЯ
-#----------
+#---------
+
+HISTORY_VERSION = 3
+
+
+def empty_history() -> dict:
+    return {"version": HISTORY_VERSION, "run": 0, "entries": {}, "gate": {}, "geo": {}}
+
 
 def load_history() -> dict:
-    if not os.path.exists(HISTORY_FILE):
-        return {"version": 2, "entries": {}}
     try:
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        if not isinstance(data, dict) or data.get("version") != 2 or not isinstance(data.get("entries"), dict):
-            return {"version": 2, "entries": {}}
+    except (OSError, ValueError):
+        return empty_history()
+    if not isinstance(data, dict) or not isinstance(data.get("entries"), dict):
+        return empty_history()
+    if data.get("version") == HISTORY_VERSION:
+        data["run"] = int(data.get("run", 0) or 0)
+        for section in ("gate", "geo"):
+            if not isinstance(data.get(section), dict):
+                data[section] = {}
         return data
-    except Exception:
-        return {"version": 2, "entries": {}}
-
-
-def save_history(history: dict) -> None:
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    tmp = HISTORY_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, HISTORY_FILE)
+    if data.get("version") == 2:
+        history = empty_history()
+        for old_key, item in data["entries"].items():
+            streak = item.get("streak", 0) if isinstance(item, dict) else 0
+            if streak > 0:
+                history["entries"][config_key(old_key)] = {"streak": streak, "seen": 0}
+        return history
+    return empty_history()
 
 
 def update_history(history: dict, results: list[CheckResult]) -> None:
-    entries = history.setdefault("entries", {})
+    history["run"] += 1
+    run = history["run"]
+    entries = history["entries"]
     for result in results:
-        key = json.dumps(result.proxy.identity(), ensure_ascii=False, sort_keys=True)
-        item = entries.get(key, {"streak": 0})
-        item["streak"] = item.get("streak", 0) + 1 if result.ok else 0
-        item["last_ok"] = result.ok
-        item["exit_ip"] = result.exit_ip
-        item["exit_iso"] = result.exit_iso
-        entries[key] = item
+        key = result.proxy.key()
+        if result.ok:
+            entries[key] = {"streak": entries.get(key, {}).get("streak", 0) + 1, "seen": run}
+        else:
+            entries.pop(key, None)
+    for key in [k for k, v in entries.items() if run - v.get("seen", 0) > HISTORY_KEEP_RUNS]:
+        del entries[key]
+
+
+def save_history(history: dict) -> None:
+    write_text_atomic(HISTORY_FILE, json.dumps(history, ensure_ascii=False, separators=(",", ":"), sort_keys=True))
 
 
 #---------
 # ВЫВОД
-#----------
+#---------
 
 def named_link(result: CheckResult) -> str:
     name = f"{country_flag(result.exit_iso)} {country_name(result.exit_iso)} | {NAME_SUFFIX}"
@@ -1062,7 +1212,6 @@ def named_link(result: CheckResult) -> str:
 
 
 def write_subscription(path: str, results: list[CheckResult], title: str) -> None:
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
     lines = [
         f"#profile-title: {title}",
         f"#profile-update-interval: {INFO['update_interval']}",
@@ -1071,110 +1220,130 @@ def write_subscription(path: str, results: list[CheckResult], title: str) -> Non
         "#subscription-userinfo: upload=0; download=0; total=0; expire=0",
     ]
     lines.extend(named_link(x) for x in results)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+    write_text_atomic(path, "\n".join(lines) + "\n")
 
 
-def save_results(
-    results: list[CheckResult],
-    collect_stats: dict[str, int],
+def build_report(
+    good: list[CheckResult],
+    main_list: list[CheckResult],
+    collect: CollectStats,
     source_errors: list[str],
-    gate_stats: dict[str, int],
-    check_stats: dict[str, int],
-    protocol_stats: dict[str, int],
+    gate: GateStats,
+    check: Counter,
     mode: str,
-) -> None:
-    good = [x for x in results if x.ok]
-    if mode == "no":
-        random.shuffle(good)
-    main = good[:MAX_PROXIES]
-    all_working = good
-    write_subscription(OUTPUT_FILE, main, INFO["title_main"])
-    write_subscription(ALL_FILE, all_working, INFO["title_all"])
-
-    subscription_protocol_stats: dict[str, int] = {scheme: 0 for scheme in SUPPORTED_SCHEMES if scheme != "hy2"}
-    for item in main:
-        subscription_protocol_stats[item.proxy.scheme] = subscription_protocol_stats.get(item.proxy.scheme, 0) + 1
-
-    country_counts: dict[str, int] = {}
-    for item in main:
-        country_counts[item.exit_iso] = country_counts.get(item.exit_iso, 0) + 1
-
+    kept_old: bool,
+) -> list[str]:
+    k = gate.kinds
+    by = collect.by_scheme
+    protocols = Counter(item.proxy.scheme for item in main_list)
+    countries = Counter(item.exit_iso for item in main_list)
     lines = [
         "=== СТАТИСТИКА ПРОВЕРКИ ===",
-        f"Источников подписок: {collect_stats['sources']} (OK: {collect_stats['sources_ok']}, FAIL: {collect_stats['sources_failed']})",
-        f"Получено ссылок: {collect_stats['received']}",
-        f"  VLESS: {collect_stats['received_vless']}",
-        f"  VMess: {collect_stats['received_vmess']}",
-        f"  Trojan: {collect_stats['received_trojan']}",
-        f"  Hysteria2/Hy2: {collect_stats['received_hysteria2'] + collect_stats['received_hy2']}",
-        f"Некорректных конфигов: {collect_stats['invalid']}",
-        f"Неизвестных строк: {collect_stats['unsupported_lines']}",
-        f"Дубликатов удалено: {collect_stats['duplicates']}",
-        f"Уникальных конфигов: {collect_stats['unique']}",
-        f"После Cheburcheck: {gate_stats['passed']}",
-        f"Cheburcheck FAIL: {gate_stats['failed']} (blocked: {gate_stats['blocked']}, HTTP: {gate_stats['http_errors']}, 429: {gate_stats['http_429']}, 5xx: {gate_stats['http_5xx']}, timeout: {gate_stats['timeouts']}, connection: {gate_stats['connection_errors']}, other: {gate_stats['other_errors']})",
+        f"Источников подписок: {collect.sources} (OK: {collect.sources_ok}, FAIL: {collect.sources_failed})",
+        f"Получено ссылок: {collect.received}",
+        f"  VLESS: {by['vless']}",
+        f"  VMess: {by['vmess']}",
+        f"  Trojan: {by['trojan']}",
+        f"  Hysteria2/Hy2: {by['hysteria2'] + by['hy2']}",
+        f"Некорректных конфигов: {collect.invalid}",
+        f"Неизвестных строк: {collect.unsupported_lines}",
+        f"Дубликатов удалено: {collect.duplicates}",
+        f"Уникальных конфигов: {collect.unique}",
+        f"После Cheburcheck: {gate.passed}",
+        (
+            f"Cheburcheck FAIL: {gate.failed} (blocked: {k['blocked']}, "
+            f"HTTP: {k['http_429'] + k['http_5xx'] + k['http_other']}, 429: {k['http_429']}, 5xx: {k['http_5xx']}, "
+            f"timeout: {k['timeout']}, connection: {k['connection']}, dns: {k['dns']}, other: {k['other'] + k['bad_json']})"
+        ),
+        f"Cheburcheck запросов: {gate.requests} (из кэша IP: {gate.cached}, ответов 429: {gate.throttled})",
         f"Режим проверки: {mode}",
-        f"Xray OK: {check_stats['ok']}",
-        f"Xray FAIL: {check_stats['xray_fail']}",
-        f"Проверка доступности FAIL: {check_stats['alive_fail']} (generate_204: {check_stats['generate_204_fail']}, tcp: {check_stats['tcp_fail']})",
-        f"Ошибка EXIT IP: {check_stats['exit_ip_fail']}",
-        f"Ошибка страны: {check_stats['country_fail']}",
-        f"Другие FAIL: {check_stats['other_fail']}",
+        f"Xray OK: {check['ok']}",
+        f"Xray FAIL: {check['xray']}",
+        f"Проверка доступности FAIL: {check['generate_204'] + check['tcp']} (generate_204: {check['generate_204']}, tcp: {check['tcp']})",
+        f"Ошибка EXIT IP: {check['exit_ip']}",
+        f"Ошибка страны: {check['country']}",
+        f"Другие FAIL: {check['other']}",
         "",
         "ПРОТОКОЛЫ ОСНОВНОЙ ПОДПИСКИ:",
-        f"  VLESS: {subscription_protocol_stats.get('vless', 0)}",
-        f"  VMess: {subscription_protocol_stats.get('vmess', 0)}",
-        f"  Trojan: {subscription_protocol_stats.get('trojan', 0)}",
-        f"  Hysteria2/Hy2: {subscription_protocol_stats.get('hysteria2', 0)}",
+        f"  VLESS: {protocols['vless']}",
+        f"  VMess: {protocols['vmess']}",
+        f"  Trojan: {protocols['trojan']}",
+        f"  Hysteria2/Hy2: {protocols['hysteria2']}",
         "",
         "РАБОЧИЕ ПО СТРАНАМ:",
     ]
-    if country_counts:
-        for iso, count in sorted(country_counts.items(), key=lambda x: (-x[1], x[0])):
+    if countries:
+        for iso, count in sorted(countries.items(), key=lambda x: (-x[1], x[0])):
             lines.append(f"  {country_flag(iso)} {country_name(iso)} ({iso}): {count}")
     else:
         lines.append("  —")
     lines += [
         "",
         f"ИТОГО рабочих: {len(good)}",
-        f"Основная подписка: {len(main)} / {MAX_PROXIES}",
-        f"Полная подписка: {len(all_working)}",
+        f"Основная подписка: {len(main_list)} / {MAX_PROXIES}",
+        f"Полная подписка: {len(good)}",
     ]
+    if kept_old:
+        lines += ["", "ВНИМАНИЕ: рабочих конфигов нет, подписки НЕ перезаписаны (оставлены прошлые)."]
     if source_errors:
         lines += ["", "ОШИБКИ ОБРАЩЕНИЯ К САЙТАМ/ИСТОЧНИКАМ:"]
         lines.extend(f"  - {error}" for error in source_errors[:30])
         if len(source_errors) > 30:
             lines.append(f"  ... ещё {len(source_errors) - 30}")
-    with open(REPORT_FILE, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+    return lines
+
+
+def save_results(
+    results: list[CheckResult],
+    history: dict,
+    collect: CollectStats,
+    source_errors: list[str],
+    gate: GateStats,
+    check: Counter,
+    mode: str,
+) -> None:
+    streaks = history["entries"]
+    good = [x for x in results if x.ok]
+    good.sort(key=lambda x: -streaks.get(x.proxy.key(), {}).get("streak", 0))
+    main_list = good[:MAX_PROXIES]
+
+    kept_old = not good
+    if good:
+        write_subscription(OUTPUT_FILE, main_list, INFO["title_main"])
+        write_subscription(ALL_FILE, good, INFO["title_all"])
+
+    lines = build_report(good, main_list, collect, source_errors, gate, check, mode, kept_old)
+    write_text_atomic(REPORT_FILE, "\n".join(lines) + "\n")
     print()
     for line in lines:
         print(f"[+] {line}" if line else "")
 
 
-
 #---------
 # MAIN
-#----------
+#---------
 
 def main() -> None:
-    config = load_check_config()
-    print(f"[+] Режим проверки: {config.mode}")
-    configs, collect_stats, source_errors = collect_configs()
+    mode = load_mode()
+    print(f"[+] Режим проверки: {mode}")
+    configs, collect, source_errors = collect_configs()
     print(f"[+] Найдено: {len(configs)} уникальных конфигов")
-    if not configs:
-        save_results([], collect_stats, source_errors, {"passed": 0, "failed": 0}, {"ok": 0, "xray_fail": 0, "alive_fail": 0, "exit_ip_fail": 0, "country_fail": 0, "other_fail": 0}, {"vless": 0, "vmess": 0, "trojan": 0, "hysteria2": 0}, config.mode)
-        return
-    gated, gate_stats = gate_all(configs)
-    if not gated:
-        save_results([], collect_stats, source_errors, gate_stats, {"ok": 0, "xray_fail": 0, "alive_fail": 0, "exit_ip_fail": 0, "country_fail": 0, "other_fail": 0}, {"vless": 0, "vmess": 0, "trojan": 0, "hysteria2": 0}, config.mode)
-        return
-    results, check_stats, protocol_stats = check_all(gated, config.mode)
+
+    global _geo_cache
     history = load_history()
-    update_history(history, results)
-    save_history(history)
-    save_results(results, collect_stats, source_errors, gate_stats, check_stats, protocol_stats, config.mode)
+    gate_cache = TtlCache(history["gate"], CHEBURCHECK_CACHE_HOURS * 3600)
+    _geo_cache = TtlCache(history["geo"], COUNTRY_CACHE_DAYS * 86400)
+    results: list[CheckResult] = []
+    gate = GateStats()
+    check: Counter = Counter()
+    if configs:
+        with tempfile.TemporaryDirectory(prefix="knetaproxy_") as workdir:
+            results, gate, check = run_pipeline(configs, mode, workdir, gate_cache)
+        update_history(history, results)
+        gate_cache.prune()
+        _geo_cache.prune()
+        save_history(history)
+    save_results(results, history, collect, source_errors, gate, check, mode)
 
 
 if __name__ == "__main__":

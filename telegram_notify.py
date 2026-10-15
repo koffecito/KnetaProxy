@@ -2,7 +2,7 @@
 
 #---------
 # TELEGRAM УВЕДОМЛЕНИЕ
-#----------
+#---------
 
 import html
 import os
@@ -100,7 +100,7 @@ def subscription_urls() -> tuple[str, str]:
 
 
 def build_message(report: str) -> str:
-    now = datetime.now(timezone.utc).astimezone()
+    now = datetime.now(timezone.utc)
     mode = html.escape(get_mode(report))
 
     received = get_int(report, r"^Получено ссылок:\s*(\d+)$")
@@ -155,6 +155,9 @@ def build_message(report: str) -> str:
         country_lines = "—"
     lines.append(f"<blockquote expandable>{country_lines}</blockquote>")
 
+    if "ВНИМАНИЕ: рабочих конфигов нет" in report:
+        lines += ["", "━━━━━━━━━━━━━━━━━━", "", "⚠️ <b>Рабочих конфигов нет — подписки не обновлены</b>"]
+
     if errors:
         lines += ["", "━━━━━━━━━━━━━━━━━━", "", "❗ <b>Ошибки источников</b>", ""]
         lines.extend(f"• {html.escape(error)}" for error in errors)
@@ -201,7 +204,8 @@ def main() -> None:
         print("[!] telegram_chats.txt не содержит chat ID — отправка пропущена")
         return
 
-    report = open(REPORT_FILE, "r", encoding="utf-8").read()
+    with open(REPORT_FILE, "r", encoding="utf-8") as f:
+        report = f.read()
     message = build_message(report)
 
     failed = 0
