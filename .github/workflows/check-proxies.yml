@@ -46,6 +46,8 @@ jobs:
       - name: Run checker
         env:
           SUBSCRIPTIONS: ${{ secrets.SUBSCRIPTIONS }}
+          MAX_WORKERS: "8"
+          REQUEST_TIMEOUT: "8"
         run: python checker.py
 
       - name: Commit and push result
