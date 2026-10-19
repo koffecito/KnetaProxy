@@ -31,8 +31,15 @@ jobs:
           cache: pip
 
       - name: Install Xray-core
+        env:
+          TERM: xterm
         run: |
-          sudo bash -c "$(curl -fL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 https://github.com/XTLS/Xray-install/raw/main/install-release.sh)"
+          sudo env TERM=xterm bash -c "$(curl -fL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" || true
+          if ! command -v xray >/dev/null 2>&1; then
+            curl -fL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 180 -o /tmp/xray.zip https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
+            sudo unzip -o /tmp/xray.zip xray -d /usr/local/bin
+            sudo chmod +x /usr/local/bin/xray
+          fi
           xray version
 
       - name: Install Python deps
@@ -46,8 +53,6 @@ jobs:
       - name: Run checker
         env:
           SUBSCRIPTIONS: ${{ secrets.SUBSCRIPTIONS }}
-          MAX_WORKERS: "12"
-          REQUEST_TIMEOUT: "8"
         run: python checker.py
 
       - name: Commit and push result
