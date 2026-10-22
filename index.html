@@ -22,13 +22,10 @@ body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,
 h1,h2{font-family:var(--serif);font-weight:500;letter-spacing:-.02em;margin:0}
 .hero{position:relative;overflow:hidden}
 .hero::before{content:"";position:absolute;right:-6%;top:0;width:66%;height:100%;background:radial-gradient(closest-side,rgba(63,152,115,.26),transparent);pointer-events:none}
-.hero .cols{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;padding-top:36px;padding-bottom:96px}
+.hero .cols{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;min-height:calc(100vh - 76px - 110px);padding-top:20px;padding-bottom:20px}
 h1{font-size:clamp(40px,6.4vw,72px);line-height:1.04}
-.lead{max-width:44ch;margin:22px 0 34px;color:var(--mut);font-size:19px;line-height:1.55}
-.btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:12px;background:var(--acc);color:var(--on);font:600 16px/1 inherit;padding:17px 28px;cursor:pointer;transition:background .2s,transform .15s}
-.btn:hover{background:#9bdcb9}
-.btn:active{transform:scale(.97)}
-.btn:focus-visible,.seg button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+.lead{max-width:44ch;margin:22px 0 28px;color:var(--mut);font-size:19px;line-height:1.55}
+.seg button:focus-visible,.tabbar button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
 .dial{position:relative;width:min(100%,380px);aspect-ratio:1;margin:0 auto}
 .dial svg{position:absolute;inset:0;width:100%;height:100%}
 .t{stroke:var(--line);stroke-width:2.6;stroke-linecap:round;transition:stroke .35s}
@@ -37,8 +34,21 @@ h1{font-size:clamp(40px,6.4vw,72px);line-height:1.04}
 .mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
 .mid .k{color:var(--mut);font-size:15px}
 .mid b{font:500 clamp(64px,13vw,104px)/1 var(--serif);letter-spacing:-.03em;font-variant-numeric:tabular-nums;margin:6px 0 4px}
-.mid .p{color:var(--sand);font-size:15px;font-weight:500;min-height:24px}
-section{padding:0 0 96px}
+.orbit{position:absolute;inset:-18px;border-radius:50%;border:1px dashed rgba(134,207,168,.3);animation:spin 80s linear infinite}
+.orbit::after{content:"";position:absolute;top:-4px;left:50%;margin-left:-4px;width:8px;height:8px;border-radius:50%;background:var(--acc);box-shadow:0 0 14px 2px var(--acc)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.flags{display:flex;flex-wrap:wrap;gap:8px;max-width:440px}
+.flags span{width:44px;height:44px;display:grid;place-items:center;font-size:23px;border:1px solid var(--line);border-radius:14px;background:rgba(14,26,21,.7);animation:pop .5s both}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.85)}}
+.view{display:none;padding-bottom:130px}
+.view.on{display:block;animation:in .35s ease-out}
+@keyframes in{from{opacity:0;transform:translateY(10px)}}
+.pg{padding-top:44px}
+.tabbar{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:20;display:flex;gap:4px;padding:6px;border-radius:28px;background:rgba(14,26,21,.84);-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%);border:1px solid var(--line);box-shadow:0 22px 44px -16px rgba(0,0,0,.75)}
+.tabbar button{display:flex;align-items:center;gap:9px;border:0;background:none;color:var(--mut);padding:13px 22px;border-radius:22px;font:600 15px/1 inherit;cursor:pointer;transition:background .25s,color .25s}
+.tabbar button:hover{color:var(--ink)}
+.tabbar svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabbar button.on{background:rgba(134,207,168,.15);color:var(--acc)}
 .sh{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
 h2{font-size:clamp(30px,4.4vw,44px);line-height:1.1}
 .seg{display:inline-flex;padding:4px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
@@ -63,7 +73,7 @@ h2{font-size:clamp(30px,4.4vw,44px);line-height:1.1}
 .bar{height:4px;border-radius:2px;background:var(--line);margin-top:12px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc2),var(--acc));border-radius:2px;transition:width 1s cubic-bezier(.2,.8,.2,1)}
 .empty{color:var(--mut)}
-.links{position:relative;padding:84px 0 72px;border-top:1px solid var(--line);background:linear-gradient(180deg,rgba(63,152,115,.1),transparent 60%)}
+.links{position:relative}
 .links .head{text-align:center}
 .links .head p{margin:12px auto 0;color:var(--mut);max-width:46ch}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:44px}
@@ -86,39 +96,38 @@ h2{font-size:clamp(30px,4.4vw,44px);line-height:1.1}
 .manual.show{display:block}
 footer{padding:0 0 48px;text-align:center;color:var(--mut);font-size:14px}
 @media(max-width:860px){
-.hero .cols{grid-template-columns:1fr;gap:20px;padding-bottom:64px}
+.hero .cols{grid-template-columns:1fr;gap:34px;min-height:0;padding-top:12px}
 .dial{width:min(100%,320px)}
 .mgrid{grid-template-columns:1fr 1fr}
 .mgrid .pc{grid-column:1/-1}
 .two{grid-template-columns:1fr}
-section{padding-bottom:72px}
 }
-@media(max-width:480px){.wrap{padding:0 18px}.status{font-size:13px;padding:7px 12px}.card,.sub-card{padding:22px}.links{padding-top:64px}.seg button{padding:10px 16px}}
-@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+@media(max-width:560px){.tabbar{width:calc(100% - 28px)}.tabbar button{flex:1;flex-direction:column;gap:5px;padding:10px 0 9px;font-size:11px}}
+@media(max-width:480px){.dial{width:min(100%,264px)}.hero .cols{gap:26px}.wrap{padding:0 18px}.status{font-size:13px;padding:7px 12px}.card,.sub-card{padding:22px}.seg button{padding:10px 16px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
+<header class="wrap top">
+  <div class="brand"><svg viewBox="0 0 32 32"><path d="M16 5.5l8.5 3.2v6.8c0 5.3-3.6 9-8.5 10.7-4.9-1.7-8.5-5.4-8.5-10.7V8.7z"/><path d="M12 15.5l3 3 5.5-6"/></svg>KnetaProxy</div>
+  <div class="status" id="live"><span class="dot"></span><span id="upd">Загрузка</span></div>
+</header>
 
-<div class="hero">
-  <div class="wrap top">
-    <div class="brand"><svg viewBox="0 0 32 32"><path d="M16 5.5l8.5 3.2v6.8c0 5.3-3.6 9-8.5 10.7-4.9-1.7-8.5-5.4-8.5-10.7V8.7z"/><path d="M12 15.5l3 3 5.5-6"/></svg>KnetaProxy</div>
-    <div class="status" id="live"><span class="dot"></span><span id="upd">Загрузка</span></div>
+<main>
+<section class="view" id="home"><div class="hero"><div class="wrap cols">
+  <div>
+    <h1>Проверенные прокси для&nbsp;России</h1>
+    <p class="lead">Каждая конфигурация проходит реальное подключение. В подписке только те, что работают прямо сейчас.</p>
+    <div class="flags" id="flags"></div>
   </div>
-  <div class="wrap cols">
-    <div>
-      <h1>Проверенные прокси для&nbsp;России</h1>
-      <p class="lead">Каждая конфигурация проходит реальное подключение. В подписке только те, что работают прямо сейчас.</p>
-      <button class="btn" id="go">Перейти к подпискам</button>
-    </div>
-    <div class="dial">
-      <svg viewBox="-170 -170 340 340" id="ticks"><circle class="ring" r="124"/></svg>
-      <div class="mid"><span class="k">рабочих</span><b id="d-total">—</b><span class="p" id="d-sub"></span></div>
-    </div>
+  <div class="dial">
+    <div class="orbit"></div>
+    <svg viewBox="-170 -170 340 340" id="ticks"><circle class="ring" r="124"/></svg>
+    <div class="mid"><span class="k">рабочих</span><b id="d-total">—</b></div>
   </div>
-</div>
+</div></div></section>
 
-<section>
-  <div class="wrap">
+<section class="view" id="stats"><div class="wrap pg">
     <div class="sh">
       <h2>Статистика</h2>
       <div class="seg" id="seg"><button data-k="main" class="on">Основная</button><button data-k="all">Полная</button></div>
@@ -129,11 +138,9 @@ section{padding-bottom:72px}
       <div class="card pc"><h3>Протоколы</h3><div class="pbar" id="pbar"></div><div id="plegend"><div class="empty">Данные недоступны</div></div></div>
     </div>
     <div class="cty" id="clist"></div>
-  </div>
-</section>
+</div></section>
 
-<div class="links" id="links">
-  <div class="wrap">
+<section class="view" id="links"><div class="wrap pg links">
     <div class="head"><h2>Подписки</h2><p>Нажмите «Копировать» и добавьте ссылку в приложение с поддержкой подписок. Начните с основной.</p></div>
     <div class="two">
       <div class="card sub-card main">
@@ -149,9 +156,14 @@ section{padding-bottom:72px}
         <input class="manual" readonly>
       </div>
     </div>
-  </div>
-</div>
-<footer>Список проверяется и обновляется автоматически.</footer>
+</div></section>
+</main>
+
+<nav class="tabbar">
+  <button data-go="home"><svg viewBox="0 0 24 24"><path d="M3.5 11L12 3.5l8.5 7.5v8.5a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z"/></svg>Главная</button>
+  <button data-go="stats"><svg viewBox="0 0 24 24"><path d="M5 20v-9M12 20V4M19 20v-6"/></svg>Статистика</button>
+  <button data-go="links"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>Подписки</button>
+</nav>
 
 <script>
 const CFG={owner:"",repo:"",branch:"main"};
@@ -162,7 +174,6 @@ const m=location.hostname.match(/^(.+)\.github\.io$/);
 if(m&&!CFG.owner){CFG.owner=m[1];CFG.repo=location.pathname.split("/")[1]||m[1]+".github.io"}
 const raw=f=>CFG.owner?`https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${CFG.branch}/proxies/${f}`:`proxies/${f}`;
 const URLS={main:raw("working.txt"),all:raw("all.txt")};
-$("#go").onclick=()=>$("#links").scrollIntoView({behavior:"smooth"});
 
 const N=90;
 $("#ticks").insertAdjacentHTML("beforeend",Array.from({length:N},(_,i)=>{
@@ -229,6 +240,7 @@ function tally(items,key){
 const DATA={};
 const SHADES=["#86cfa8","#3f9873","#2c6e53","#1d4a38"];
 function showStats(k){
+  cur=k;
   $$("#seg button").forEach(b=>b.classList.toggle("on",b.dataset.k===k));
   const items=DATA[k];
   if(!items||!items.length)return;
@@ -241,7 +253,20 @@ function showStats(k){
   $("#clist").innerHTML=cty.map(x=>{const[f,n]=x[0].split("|");return `<div class="tile"><div class="fl">${esc(f)}</div><div class="n"><span>${esc(n)}</span><b>${x[1]}</b></div><div class="bar"><i data-w="${Math.round(x[1]/max*100)}"></i></div></div>`}).join("");
   setTimeout(()=>$$(".bar i").forEach(i=>i.style.width=i.dataset.w+"%"),150);
 }
+let cur="main";
 $$("#seg button").forEach(b=>b.onclick=()=>showStats(b.dataset.k));
+function renderFlags(items){
+  $("#flags").innerHTML=tally(items,x=>x.flag+"|"+x.country).slice(0,10).map((x,i)=>{const[f,n]=x[0].split("|");return `<span title="${esc(n)}" style="animation-delay:${400+i*70}ms">${esc(f)}</span>`}).join("");
+}
+function go(t){
+  if(!["home","stats","links"].includes(t))t="home";
+  $$(".view").forEach(v=>v.classList.toggle("on",v.id===t));
+  $$(".tabbar button").forEach(b=>{const on=b.dataset.go===t;b.classList.toggle("on",on);on?b.setAttribute("aria-current","page"):b.removeAttribute("aria-current")});
+  window.scrollTo(0,0);
+  if(t==="stats"&&DATA[cur])showStats(cur);
+}
+$$(".tabbar button").forEach(b=>b.onclick=()=>go(b.dataset.go));
+go("home");
 
 function ago(d){
   const m=Math.max(1,Math.round((Date.now()-d)/60000));
@@ -255,7 +280,7 @@ Promise.all(["main","all"].map(k=>fetch(URLS[k],{cache:"no-store"}).then(r=>r.ok
   if(!a&&!b){$("#upd").textContent="Данные недоступны";return}
   $("#live").classList.add("ok");$("#upd").textContent="Подписки актуальны";
   countTo($("#d-total"),full.length);
-  if(a&&b){$("#d-sub").textContent=`из них ${a.length} в основной`;light(a.length/b.length)}else light(1);
+  light(1);renderFlags(full);
   if(a)$("#c1").textContent=plural(a.length,["конфигурация","конфигурации","конфигураций"]);
   if(b)$("#c2").textContent=plural(b.length,["конфигурация","конфигурации","конфигураций"]);
   showStats(a?"main":"all");
