@@ -21,12 +21,12 @@ body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,
 .ok .dot{background:var(--acc);box-shadow:0 0 0 4px rgba(134,207,168,.18)}
 h1,h2{font-family:var(--serif);font-weight:500;letter-spacing:-.02em;margin:0}
 .hero{position:relative;overflow:hidden}
-.hero::before{content:"";position:absolute;right:-6%;top:0;width:66%;height:100%;background:radial-gradient(closest-side,rgba(63,152,115,.26),transparent);pointer-events:none}
-.hero .cols{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;min-height:calc(100vh - 76px - 110px);padding-top:20px;padding-bottom:20px}
-h1{font-size:clamp(40px,6.4vw,72px);line-height:1.04}
-.lead{max-width:44ch;margin:22px 0 28px;color:var(--mut);font-size:19px;line-height:1.55}
+.hero::before{content:"";position:absolute;left:50%;top:10%;width:84%;height:64%;transform:translateX(-50%);background:radial-gradient(closest-side,rgba(63,152,115,.26),transparent);pointer-events:none}
+.hero .cols{display:grid;grid-template-columns:1fr;justify-items:center;align-content:center;gap:40px;text-align:center;min-height:calc(100vh - 76px - 110px);padding-top:24px;padding-bottom:20px}
+h1{font-size:clamp(36px,5vw,52px);line-height:1.08;margin:0;justify-self:start;text-align:left;max-width:100%}
+.lead{max-width:48ch;margin:0 auto 28px;color:var(--mut);font-size:19px;line-height:1.55}
 .seg button:focus-visible,.tabbar button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
-.dial{position:relative;width:min(100%,380px);aspect-ratio:1;margin:0 auto}
+.dial{position:relative;width:min(100%,300px);aspect-ratio:1;margin:0 auto}
 .dial svg{position:absolute;inset:0;width:100%;height:100%}
 .t{stroke:var(--line);stroke-width:2.6;stroke-linecap:round;transition:stroke .35s}
 .t.on{stroke:var(--acc)}
@@ -37,7 +37,9 @@ h1{font-size:clamp(40px,6.4vw,72px);line-height:1.04}
 .orbit{position:absolute;inset:-18px;border-radius:50%;border:1px dashed rgba(134,207,168,.3);animation:spin 80s linear infinite}
 .orbit::after{content:"";position:absolute;top:-4px;left:50%;margin-left:-4px;width:8px;height:8px;border-radius:50%;background:var(--acc);box-shadow:0 0 14px 2px var(--acc)}
 @keyframes spin{to{transform:rotate(360deg)}}
-.flags{display:flex;flex-wrap:wrap;gap:8px;max-width:440px}
+.fhead{display:flex;align-items:center;gap:14px;margin:0 auto 16px;max-width:440px;color:var(--mut);font-size:13px;letter-spacing:.02em}
+.fhead::before,.fhead::after{content:"";flex:1;height:1px;background:var(--line)}
+.flags{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:440px;margin:0 auto}
 .flags span{width:44px;height:44px;display:grid;place-items:center;font-size:23px;border:1px solid var(--line);border-radius:14px;background:rgba(14,26,21,.7);animation:pop .5s both}
 @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.85)}}
 .view{display:none;padding-bottom:130px}
@@ -66,10 +68,11 @@ h2{font-size:clamp(30px,4.4vw,44px);line-height:1.1}
 .leg span{display:flex;align-items:center;gap:10px}
 .leg i{width:10px;height:10px;border-radius:3px;display:inline-block}
 .cty{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:16px}
-.tile{padding:18px 18px 16px;border:1px solid var(--line);border-radius:18px;background:var(--card)}
+.tile{min-width:0;padding:18px 18px 16px;border:1px solid var(--line);border-radius:18px;background:var(--card)}
 .tile .fl{font-size:30px;line-height:1}
-.tile .n{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:12px;font-size:15px}
-.tile b{font:500 22px/1 var(--serif);font-variant-numeric:tabular-nums}
+.tile .tt{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tile .nm{margin-top:10px;font-size:15px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.tile b{flex:none;font:500 22px/1 var(--serif);font-variant-numeric:tabular-nums}
 .bar{height:4px;border-radius:2px;background:var(--line);margin-top:12px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc2),var(--acc));border-radius:2px;transition:width 1s cubic-bezier(.2,.8,.2,1)}
 .empty{color:var(--mut)}
@@ -96,7 +99,7 @@ h2{font-size:clamp(30px,4.4vw,44px);line-height:1.1}
 .manual.show{display:block}
 footer{padding:0 0 48px;text-align:center;color:var(--mut);font-size:14px}
 @media(max-width:860px){
-.hero .cols{grid-template-columns:1fr;gap:34px;min-height:0;padding-top:12px}
+.hero .cols{min-height:0;gap:30px}
 .dial{width:min(100%,320px)}
 .mgrid{grid-template-columns:1fr 1fr}
 .mgrid .pc{grid-column:1/-1}
@@ -104,6 +107,7 @@ footer{padding:0 0 48px;text-align:center;color:var(--mut);font-size:14px}
 }
 @media(max-width:560px){.tabbar{width:calc(100% - 28px)}.tabbar button{flex:1;flex-direction:column;gap:5px;padding:10px 0 9px;font-size:11px}}
 @media(max-width:480px){.dial{width:min(100%,264px)}.hero .cols{gap:26px}.wrap{padding:0 18px}.status{font-size:13px;padding:7px 12px}.card,.sub-card{padding:22px}.seg button{padding:10px 16px}}
+@media(max-width:360px){.top{gap:8px}.brand{font-size:16px;gap:8px}.brand svg{width:24px;height:24px}.status{font-size:12px;padding:6px 10px;gap:7px}.dot{width:7px;height:7px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
@@ -115,15 +119,16 @@ footer{padding:0 0 48px;text-align:center;color:var(--mut);font-size:14px}
 
 <main>
 <section class="view" id="home"><div class="hero"><div class="wrap cols">
-  <div>
-    <h1>Проверенные прокси для&nbsp;России</h1>
-    <p class="lead">Каждая конфигурация проходит реальное подключение. В подписке только те, что работают прямо сейчас.</p>
-    <div class="flags" id="flags"></div>
-  </div>
+  <h1>Проверенные прокси для&nbsp;России</h1>
   <div class="dial">
     <div class="orbit"></div>
     <svg viewBox="-170 -170 340 340" id="ticks"><circle class="ring" r="124"/></svg>
     <div class="mid"><span class="k">рабочих</span><b id="d-total">—</b></div>
+  </div>
+  <div class="under">
+    <p class="lead">Каждая конфигурация проходит реальное подключение. В подписке только те, что работают прямо сейчас.</p>
+    <div class="fhead">Страны</div>
+    <div class="flags" id="flags"></div>
   </div>
 </div></div></section>
 
@@ -250,13 +255,13 @@ function showStats(k){
   $("#pbar").innerHTML=proto.map((x,i)=>`<i style="width:${x[1]/sum*100}%;background:${SHADES[i%4]}"></i>`).join("");
   $("#plegend").innerHTML=proto.map((x,i)=>`<div class="leg"><span><i style="background:${SHADES[i%4]}"></i>${esc(x[0])}</span><b>${x[1]}</b></div>`).join("");
   const max=cty[0][1];
-  $("#clist").innerHTML=cty.map(x=>{const[f,n]=x[0].split("|");return `<div class="tile"><div class="fl">${esc(f)}</div><div class="n"><span>${esc(n)}</span><b>${x[1]}</b></div><div class="bar"><i data-w="${Math.round(x[1]/max*100)}"></i></div></div>`}).join("");
+  $("#clist").innerHTML=cty.map(x=>{const[f,n]=x[0].split("|");return `<div class="tile"><div class="tt"><span class="fl">${esc(f)}</span><b>${x[1]}</b></div><div class="nm" title="${esc(n)}">${esc(n)}</div><div class="bar"><i data-w="${Math.round(x[1]/max*100)}"></i></div></div>`}).join("");
   setTimeout(()=>$$(".bar i").forEach(i=>i.style.width=i.dataset.w+"%"),150);
 }
 let cur="main";
 $$("#seg button").forEach(b=>b.onclick=()=>showStats(b.dataset.k));
 function renderFlags(items){
-  $("#flags").innerHTML=tally(items,x=>x.flag+"|"+x.country).slice(0,10).map((x,i)=>{const[f,n]=x[0].split("|");return `<span title="${esc(n)}" style="animation-delay:${400+i*70}ms">${esc(f)}</span>`}).join("");
+  $("#flags").innerHTML=tally(items,x=>x.flag+"|"+x.country).slice(0,8).map((x,i)=>{const[f,n]=x[0].split("|");return `<span title="${esc(n)}" style="animation-delay:${400+i*70}ms">${esc(f)}</span>`}).join("");
 }
 function go(t){
   if(!["home","stats","links"].includes(t))t="home";
