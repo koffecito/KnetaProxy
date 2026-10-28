@@ -119,12 +119,12 @@ HISTORY_FILE = os.path.join(OUTPUT_DIR, "history.json")
 
 def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
     values = {
-        "title_main": "KnetaProxy | Основная Подписка",
-        "title_all": "KnetaProxy | Полная Подписка",
+        "title_main": "KnetaProxy • Основная Подписка",
+        "title_all": "KnetaProxy • Полная Подписка",
         "update_interval": "4",
         "support_url": "https://t.me/KnetaProxy",
-        "announce": "Если не работает, то нажмите 🔄, а затем 🕒",
-        "name_suffix": os.environ.get("NAME_SUFFIX", "@KnetaProxy"),
+        "announce": "тг: @KnetaProxy | BlackList",
+        "name_suffix": os.environ.get("NAME_SUFFIX", "[KP]"),
     }
     if not os.path.exists(path):
         return values
