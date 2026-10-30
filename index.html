@@ -21,23 +21,22 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;opa
 .status{display:inline-flex;align-items:center;gap:9px;padding:8px 15px;border:1px solid rgba(108,171,125,.2);border-radius:22px;background:rgba(15,43,28,.8);color:#a9c4b1;font-size:14px;white-space:nowrap}
 .dot{width:8px;height:8px;border-radius:50%;background:#81988a}
 .ok .dot{background:#37d65e;box-shadow:0 0 0 4px rgba(55,214,94,.13),0 0 15px rgba(55,214,94,.6)}
-h1,h2{font-family:var(--serif);font-weight:500;letter-spacing:-.02em;margin:0;color:#f1faf3}
+h2{font-family:var(--serif);font-weight:500;letter-spacing:-.02em;margin:0;color:#f1faf3}
 .hero{position:relative;overflow:hidden}
 .hero::before{content:"";position:absolute;left:50%;top:10%;width:84%;height:64%;transform:translateX(-50%);background:radial-gradient(closest-side,rgba(0,184,169,.16),rgba(33,160,56,.06) 45%,transparent);pointer-events:none}
-.hero .cols{display:grid;grid-template-columns:1fr;justify-items:center;align-content:center;gap:40px;text-align:center;min-height:calc(100vh - 76px - 110px);padding-top:24px;padding-bottom:20px}
-h1{font-size:clamp(36px,5vw,52px);line-height:1.08;margin:0;justify-self:start;text-align:left;max-width:100%}
-.lead{max-width:48ch;margin:0 auto 28px;color:#a2b9a9;font-size:19px;line-height:1.55}
+.hero .cols{--sp:clamp(50px,7vw,68px);display:grid;grid-template-columns:1fr;justify-items:center;align-content:start;gap:var(--sp);text-align:center;padding-top:var(--sp);padding-bottom:20px}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .seg button:focus-visible,.tabbar button:focus-visible{outline:2px solid #00c5ad;outline-offset:3px}
-.dial{position:relative;width:min(100%,300px);aspect-ratio:1;margin:0 auto;filter:drop-shadow(0 22px 34px rgba(0,0,0,.22))}
+.dial{position:relative;width:min(100%,300px);aspect-ratio:1;margin:0 auto}
 .dial svg{position:absolute;inset:0;width:100%;height:100%}
 .t{stroke:rgba(134,186,147,.2);stroke-width:2.6;stroke-linecap:round;transition:stroke .35s}
-.t.on{stroke:#3bd35f;filter:drop-shadow(0 0 4px rgba(59,211,95,.42))}
+.t.on{stroke:#3bd35f}
 .ring{fill:rgba(5,22,14,.22);stroke:rgba(134,186,147,.17);stroke-width:1}
 .mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
 .mid .k{color:#9ab5a2;font-size:15px}
 .mid b{font:500 clamp(64px,13vw,104px)/1 var(--serif);letter-spacing:-.03em;font-variant-numeric:tabular-nums;margin:6px 0 4px;color:#f2fff4}
 .orbit{position:absolute;inset:-18px;border-radius:50%;border:1px dashed rgba(55,207,117,.3);animation:spin 80s linear infinite}
-.orbit::after{content:"";position:absolute;top:-4px;left:50%;margin-left:-4px;width:8px;height:8px;border-radius:50%;background:#00c5ad;box-shadow:0 0 17px 3px rgba(0,197,173,.7)}
+.orbit::after{content:"";position:absolute;top:-4px;left:50%;margin-left:-4px;width:8px;height:8px;border-radius:50%;background:#3bd35f;box-shadow:0 0 14px 2px #3bd35f}
 @keyframes spin{to{transform:rotate(360deg)}}
 .fhead{display:flex;align-items:center;gap:14px;margin:0 auto 16px;max-width:440px;color:#85a591;font-size:13px;letter-spacing:.02em}
 .fhead::before,.fhead::after{content:"";flex:1;height:1px;background:var(--line)}
@@ -101,14 +100,13 @@ h2{font-size:clamp(30px,4.4vw,44px);line-height:1.1}
 .manual.show{display:block}
 footer{padding:0 0 48px;text-align:center;color:var(--mut);font-size:14px}
 @media(max-width:860px){
-.hero .cols{min-height:0;gap:30px}
 .dial{width:min(100%,320px)}
 .mgrid{grid-template-columns:1fr 1fr}
 .mgrid .pc{grid-column:1/-1}
 .two{grid-template-columns:1fr}
 }
 @media(max-width:560px){.tabbar{width:calc(100% - 28px)}.tabbar button{flex:1;flex-direction:column;gap:5px;padding:10px 0 9px;font-size:11px}}
-@media(max-width:480px){.dial{width:min(100%,264px)}.hero .cols{gap:26px}.wrap{padding:0 18px}.status{font-size:13px;padding:7px 12px}.card,.sub-card{padding:22px}.seg button{padding:10px 16px}}
+@media(max-width:480px){.dial{width:min(100%,264px)}.wrap{padding:0 18px}.status{font-size:13px;padding:7px 12px}.card,.sub-card{padding:22px}.seg button{padding:10px 16px}}
 @media(max-width:360px){.hbar{gap:8px;padding:10px 10px 10px 14px}.brand{font-size:16px;gap:8px}.brand img{width:30px;height:30px;border-radius:9px}.status{font-size:12px;padding:6px 10px;gap:7px}.dot{width:7px;height:7px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 </style>
@@ -123,14 +121,13 @@ footer{padding:0 0 48px;text-align:center;color:var(--mut);font-size:14px}
 
 <main>
 <section class="view" id="home"><div class="hero"><div class="wrap cols">
-  <h1>Проверенные прокси для&nbsp;России</h1>
+  <h1 class="sr">Проверенные прокси для&nbsp;России</h1>
   <div class="dial">
     <div class="orbit"></div>
     <svg viewBox="-170 -170 340 340" id="ticks"><circle class="ring" r="124"/></svg>
     <div class="mid"><span class="k">рабочих</span><b id="d-total">—</b></div>
   </div>
   <div class="under">
-    <p class="lead">Каждая конфигурация проходит реальное подключение. В подписке только те, что работают прямо сейчас.</p>
     <div class="fhead">Страны</div>
     <div class="flags" id="flags"></div>
   </div>
