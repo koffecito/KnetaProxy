@@ -42,8 +42,10 @@ h2{font-family:var(--serif);font-weight:500;letter-spacing:-.02em;margin:0;color
 .under{width:100%;max-width:440px}
 .flags{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:312px;margin:0 auto}
 .flags span{width:44px;height:44px;display:grid;place-items:center;font-size:23px;border:1px solid rgba(136,185,148,.16);border-radius:14px;background:rgba(18,48,31,.75);box-shadow:inset 0 1px rgba(255,255,255,.035);animation:pop .5s both}
-.tgb{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:440px;margin:36px auto 0;padding:16px 16px 16px 20px;border-radius:22px;background:linear-gradient(105deg,#21a038,#00ad9e);box-shadow:0 18px 44px -18px rgba(0,175,105,.55);color:#fff;text-align:left;text-decoration:none;transition:transform .25s,box-shadow .25s,filter .25s}
+.tgb{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:440px;margin:36px auto 0;padding:16px 16px 16px 20px;border-radius:22px;background:linear-gradient(105deg,#21a038,#00ad9e);box-shadow:0 18px 44px -18px rgba(0,175,105,.55);color:#fff;text-align:left;text-decoration:none;transition:transform .25s,box-shadow .25s,filter .25s,opacity .55s ease,translate .55s ease,visibility 0s}
 .tgb:hover{transform:translateY(-2px);filter:brightness(1.06);box-shadow:0 24px 52px -18px rgba(0,175,105,.7)}
+.tgb.hid{opacity:0;translate:0 18px;pointer-events:none;visibility:hidden;transition:opacity .55s ease,translate .55s ease,visibility 0s .55s}
+@media(prefers-reduced-motion:reduce){.tgb,.tgb.hid{transition:none}}
 .tgb .t{display:block;font-size:18px;font-weight:650;line-height:1.2}
 .tgb .s{display:block;margin-top:3px;font-size:13.5px;color:#f2fff5}
 .tgb .btn{flex:none;display:flex;align-items:center;padding:11px 22px;border-radius:999px;background:#041109;color:#eff8f1;font-size:14px;font-weight:600}
@@ -278,9 +280,23 @@ function go(t){
   window.scrollTo(0,0);
   if(t==="stats"&&DATA[cur])showStats(cur);
 }
+const tgb=$(".tgb");
+if(tgb)tgb.classList.add("hid");
+function armTgb(){
+  if(!tgb||!("IntersectionObserver"in window)){if(tgb)tgb.classList.remove("hid");return}
+  const tb=$(".tabbar");
+  new IntersectionObserver(e=>tgb.classList.toggle("hid",!e[0].isIntersecting),{rootMargin:"0px 0px -"+(tb.offsetHeight+34)+"px 0px",threshold:.99}).observe(tgb);
+}
 $$(".tabbar button").forEach(b=>b.onclick=()=>go(b.dataset.go));
 go("home");
 
+const UPD={ok:false,fail:false,at:null};
+function paintUpd(){
+  const el=$("#upd");
+  if(UPD.fail)el.textContent="Данные недоступны";
+  else if(UPD.at)el.innerHTML='<span class="pre">Обновлено </span>'+ago(UPD.at);
+  else if(UPD.ok)el.textContent="Подписки актуальны";
+}
 function ago(d){
   const m=Math.max(1,Math.round((Date.now()-d)/60000));
   if(m<60)return m+" мин назад";
@@ -288,18 +304,23 @@ function ago(d){
   return h<24?h+" ч назад":Math.round(h/24)+" дн назад";
 }
 Promise.all(["main","all"].map(k=>fetch(URLS[k],{cache:"no-store"}).then(r=>r.ok?r.text():Promise.reject()).then(parseSub).catch(()=>null))).then(([a,b])=>{
+  armTgb();
   DATA.main=a;DATA.all=b;
   const full=b||a;
-  if(!a&&!b){$("#upd").textContent="Данные недоступны";return}
-  $("#live").classList.add("ok");$("#upd").textContent="Подписки актуальны";
+  if(!a&&!b){UPD.fail=true;paintUpd();return}
+  $("#live").classList.add("ok");UPD.ok=true;paintUpd();
   countTo($("#d-total"),full.length);
   light(1);renderFlags(full);
   if(a)$("#c1").textContent=plural(a.length,["конфигурация","конфигурации","конфигураций"]);
   if(b)$("#c2").textContent=plural(b.length,["конфигурация","конфигурации","конфигураций"]);
   showStats(a?"main":"all");
 });
-if(CFG.owner)fetch(`https://api.github.com/repos/${CFG.owner}/${CFG.repo}/commits?path=proxies/working.txt&per_page=1`)
-  .then(r=>r.json()).then(j=>{$("#upd").innerHTML='<span class="pre">Обновлено </span>'+ago(new Date(j[0].commit.committer.date))}).catch(()=>{});
+fetch(raw("updated.txt"),{cache:"no-store"})
+  .then(r=>r.ok?r.text():Promise.reject())
+  .then(t=>{const d=new Date(t.trim());if(isNaN(d))return Promise.reject();return d})
+  .catch(()=>CFG.owner?fetch(`https://api.github.com/repos/${CFG.owner}/${CFG.repo}/commits?path=proxies/working.txt&per_page=1`).then(r=>r.json()).then(j=>new Date(j[0].commit.committer.date)):Promise.reject())
+  .then(d=>{UPD.at=d;paintUpd()})
+  .catch(()=>{});
 </script>
 </body>
 </html>
