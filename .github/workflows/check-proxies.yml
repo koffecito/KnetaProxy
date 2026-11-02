@@ -53,6 +53,7 @@ jobs:
       - name: Run checker
         env:
           SUBSCRIPTIONS: ${{ secrets.SUBSCRIPTIONS }}
+          CHEBURCHECK_CACHE_HOURS: "72"
         run: python checker.py
 
       - name: Commit and push result
