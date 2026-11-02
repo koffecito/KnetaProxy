@@ -57,12 +57,12 @@ EXIT_IP_API_URLS = tuple(
     x.strip()
     for x in os.environ.get(
         "EXIT_IP_API_URLS",
-        os.environ.get("EXIT_IP_API_URL", "https://api.ipify.org?format=json,https://icanhazip.com"),
+        os.environ.get("EXIT_IP_API_URL", "https://api.ipify.org?format=json,https://icanhazip.com,https://api.country.is"),
     ).split(",")
     if x.strip()
 )
-EXIT_IP_TIMEOUT = env_float("EXIT_IP_TIMEOUT", 5)
-EXIT_IP_RETRIES = env_int("EXIT_IP_RETRIES", 1)
+EXIT_IP_TIMEOUT = env_float("EXIT_IP_TIMEOUT", 4)
+EXIT_IP_RETRIES = env_int("EXIT_IP_RETRIES", 0)
 
 COUNTRY_API_URL = os.environ.get("COUNTRY_API_URL", "https://api.country.is")
 COUNTRY_TIMEOUT = env_float("COUNTRY_TIMEOUT", 5)
@@ -184,6 +184,21 @@ COUNTRY_NAMES_RU = {
     "CL": "Чили", "CY": "Кипр", "MT": "Мальта", "SK": "Словакия",
     "SI": "Словения", "HR": "Хорватия", "RS": "Сербия", "AL": "Албания",
     "BA": "Босния и Герцеговина", "MK": "Северная Македония", "ME": "Черногория",
+    "BY": "Беларусь", "IR": "Иран", "IQ": "Ирак",
+    "TJ": "Таджикистан", "TM": "Туркменистан", "MN": "Монголия",
+    "PK": "Пакистан", "BD": "Бангладеш", "LK": "Шри-Ланка",
+    "NP": "Непал", "AF": "Афганистан", "SY": "Сирия",
+    "JO": "Иордания", "LB": "Ливан", "QA": "Катар",
+    "KW": "Кувейт", "BH": "Бахрейн", "OM": "Оман",
+    "YE": "Йемен", "MA": "Марокко", "DZ": "Алжир",
+    "TN": "Тунис", "LY": "Ливия", "NG": "Нигерия",
+    "KE": "Кения", "ET": "Эфиопия", "GH": "Гана",
+    "CO": "Колумбия", "PE": "Перу", "VE": "Венесуэла",
+    "EC": "Эквадор", "UY": "Уругвай", "PA": "Панама",
+    "CR": "Коста-Рика", "DO": "Доминиканская Республика", "CU": "Куба",
+    "KH": "Камбоджа", "LA": "Лаос", "MM": "Мьянма",
+    "MO": "Макао", "LI": "Лихтенштейн", "MC": "Монако",
+    "AD": "Андорра", "XK": "Косово",
 }
 
 def country_flag(iso: str) -> str:
@@ -1027,10 +1042,15 @@ def check_single_proxy(proxy: ProxyConfig, mode: str, workdir: str) -> CheckResu
             return CheckResult(proxy, False, reason, stage=mode)
         exit_ip, error = get_exit_ip(proxies)
         if not exit_ip:
+            if mode == "generate_204":
+                return CheckResult(proxy, True, error, stage="unknown_ip")
             return CheckResult(proxy, False, error, stage="exit_ip")
         iso, error = lookup_country(exit_ip)
         if not iso:
-            return CheckResult(proxy, False, error or "country API: не удалось определить страну", exit_ip=exit_ip, stage="country")
+            error = error or "country API: не удалось определить страну"
+            if mode == "generate_204":
+                return CheckResult(proxy, True, error, exit_ip=exit_ip, stage="unknown_country")
+            return CheckResult(proxy, False, error, exit_ip=exit_ip, stage="country")
         return CheckResult(proxy, True, exit_ip=exit_ip, exit_iso=iso, stage="ok")
     except Exception as e:
         return CheckResult(proxy, False, f"{type(e).__name__}: {str(e)[:110]}", stage="other")
@@ -1076,7 +1096,12 @@ def run_pipeline(
     def check_and_log(proxy: ProxyConfig) -> CheckResult:
         result = check_single_proxy(proxy, mode, workdir)
         status = "OK  " if result.ok else "FAIL"
-        extra = f"{result.exit_ip} | {result.exit_iso}" if result.ok else result.error
+        if result.ok and result.exit_iso:
+            extra = f"{result.exit_ip} | {result.exit_iso}"
+        elif result.ok:
+            extra = f"страна неизвестна ({result.error})"
+        else:
+            extra = result.error
         log(f"[check {next(counter)}] {status} {proxy_label(proxy)} {extra}")
         return result
 
@@ -1237,6 +1262,9 @@ def build_report(
     by = collect.by_scheme
     protocols = Counter(item.proxy.scheme for item in main_list)
     countries = Counter(item.exit_iso for item in main_list)
+    unknown_ip = check["unknown_ip"]
+    unknown_country = check["unknown_country"]
+    unknown_total = unknown_ip + unknown_country
     lines = [
         "=== СТАТИСТИКА ПРОВЕРКИ ===",
         f"Источников подписок: {collect.sources} (OK: {collect.sources_ok}, FAIL: {collect.sources_failed})",
@@ -1257,11 +1285,12 @@ def build_report(
         ),
         f"Cheburcheck запросов: {gate.requests} (из кэша IP: {gate.cached}, ответов 429: {gate.throttled})",
         f"Режим проверки: {mode}",
-        f"Xray OK: {check['ok']}",
+        f"Xray OK: {check['ok'] + unknown_total}",
         f"Xray FAIL: {check['xray']}",
         f"Проверка доступности FAIL: {check['generate_204'] + check['tcp']} (generate_204: {check['generate_204']}, tcp: {check['tcp']})",
         f"Ошибка EXIT IP: {check['exit_ip']}",
         f"Ошибка страны: {check['country']}",
+        f"Страна не определена, принято как «Неизвестно»: {unknown_total} (exit IP: {unknown_ip}, страна: {unknown_country})",
         f"Другие FAIL: {check['other']}",
         "",
         "ПРОТОКОЛЫ ОСНОВНОЙ ПОДПИСКИ:",
@@ -1274,7 +1303,8 @@ def build_report(
     ]
     if countries:
         for iso, count in sorted(countries.items(), key=lambda x: (-x[1], x[0])):
-            lines.append(f"  {country_flag(iso)} {country_name(iso)} ({iso}): {count}")
+            code = iso or "XX"
+            lines.append(f"  {country_flag(iso)} {country_name(iso)} ({code}): {count}")
     else:
         lines.append("  —")
     lines += [
@@ -1304,8 +1334,8 @@ def save_results(
 ) -> None:
     streaks = history["entries"]
     good = [x for x in results if x.ok]
-    good.sort(key=lambda x: -streaks.get(x.proxy.key(), {}).get("streak", 0))
-    main_list = good[:MAX_PROXIES]
+    good.sort(key=lambda x: (not x.exit_iso, -streaks.get(x.proxy.key(), {}).get("streak", 0)))
+    main_list = [x for x in good if x.exit_iso][:MAX_PROXIES] or good[:MAX_PROXIES]
 
     kept_old = not good
     if good:

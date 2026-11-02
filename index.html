@@ -259,19 +259,20 @@ function showStats(k){
   $$("#seg button").forEach(b=>b.classList.toggle("on",b.dataset.k===k));
   const items=DATA[k];
   if(!items||!items.length)return;
-  const cty=tally(items,x=>x.flag+"|"+x.country),proto=tally(items,x=>x.proto);
-  countTo($("#m-n"),items.length);countTo($("#m-c"),cty.length);
+  const U="Неизвестно",cty=tally(items,x=>x.flag+"|"+x.country),proto=tally(items,x=>x.proto);
+  cty.sort((a,b)=>(a[0].split("|")[1]===U)-(b[0].split("|")[1]===U));
+  countTo($("#m-n"),items.length);countTo($("#m-c"),cty.filter(x=>x[0].split("|")[1]!==U).length);
   const sum=items.length;
   $("#pbar").innerHTML=proto.map((x,i)=>`<i style="width:${x[1]/sum*100}%;background:${SHADES[i%4]}"></i>`).join("");
   $("#plegend").innerHTML=proto.map((x,i)=>`<div class="leg"><span><i style="background:${SHADES[i%4]}"></i>${esc(x[0])}</span><b>${x[1]}</b></div>`).join("");
-  const max=cty[0][1];
+  const max=Math.max(...cty.map(x=>x[1]));
   $("#clist").innerHTML=cty.map(x=>{const[f,n]=x[0].split("|");return `<div class="tile"><div class="tt"><span class="fl">${esc(f)}</span><b>${x[1]}</b></div><div class="nm" title="${esc(n)}">${esc(n)}</div><div class="bar"><i data-w="${Math.round(x[1]/max*100)}"></i></div></div>`}).join("");
   setTimeout(()=>$$(".bar i").forEach(i=>i.style.width=i.dataset.w+"%"),150);
 }
 let cur="main";
 $$("#seg button").forEach(b=>b.onclick=()=>showStats(b.dataset.k));
 function renderFlags(items){
-  $("#flags").innerHTML=tally(items,x=>x.flag+"|"+x.country).slice(0,12).map((x,i)=>{const[f,n]=x[0].split("|");return `<span title="${esc(n)}" style="animation-delay:${400+i*70}ms">${esc(f)}</span>`}).join("");
+  $("#flags").innerHTML=tally(items.filter(x=>x.country!=="Неизвестно"),x=>x.flag+"|"+x.country).slice(0,12).map((x,i)=>{const[f,n]=x[0].split("|");return `<span title="${esc(n)}" style="animation-delay:${400+i*70}ms">${esc(f)}</span>`}).join("");
 }
 function go(t){
   if(!["home","stats","links"].includes(t))t="home";
