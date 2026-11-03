@@ -7,6 +7,7 @@ import ipaddress
 import itertools
 import json
 import os
+import queue
 import random
 import socket
 import subprocess
@@ -15,7 +16,7 @@ import tempfile
 import threading
 import time
 from collections import Counter
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
@@ -1059,7 +1060,7 @@ def check_single_proxy(proxy: ProxyConfig, mode: str, workdir: str) -> CheckResu
 
 
 #---------
-# КОНВЕЙЕР: Cheburcheck -> Xray
+# КОНВЕЙЕР: Xray -> Cheburcheck
 #---------
 
 @dataclass
@@ -1070,6 +1071,7 @@ class GateStats:
     cached: int = 0
     requests: int = 0
     throttled: int = 0
+    dns: int = 0
 
 
 def proxy_label(proxy: ProxyConfig) -> str:
@@ -1086,12 +1088,19 @@ def run_pipeline(
     for idx, ips in enumerate(config_ips):
         for ip in ips:
             ip_users.setdefault(ip, []).append(idx)
-    print(f"[+] Уникальных IP для Cheburcheck: {len(ip_users)}")
+    print(f"[+] Уникальных IP: {len(ip_users)}")
 
-    verdicts: dict[str, Verdict] = {}
-    submitted: set[int] = set()
-    check_futures: dict[Future, int] = {}
+    gate = GateStats()
     counter = itertools.count(1)
+    gate_counter = itertools.count(1)
+    done_queue: queue.Queue = queue.Queue()
+    outstanding = 0
+    results: dict[int, CheckResult] = {}
+    verdicts: dict[str, Verdict] = {}
+    queued_ips: set[str] = set()
+    waiting: set[int] = set()
+    accepted: set[int] = set()
+    rejected: dict[int, str] = {}
 
     def check_and_log(proxy: ProxyConfig) -> CheckResult:
         result = check_single_proxy(proxy, mode, workdir)
@@ -1105,74 +1114,103 @@ def run_pipeline(
         log(f"[check {next(counter)}] {status} {proxy_label(proxy)} {extra}")
         return result
 
-    gate = GateStats()
+    def submit(pool: ThreadPoolExecutor, fn: Callable, arg, tag: tuple) -> None:
+        nonlocal outstanding
+        future = pool.submit(fn, arg)
+        outstanding += 1
+        future.add_done_callback(lambda f, t=tag: done_queue.put((t, f)))
 
-    def accept(ip: str, verdict: Verdict) -> None:
-        verdicts[ip] = verdict
-        if verdict.ok:
-            for idx in ip_users[ip]:
-                if idx not in submitted:
-                    submitted.add(idx)
-                    check_futures[check_pool.submit(check_and_log, configs[idx])] = idx
+    def request_ip(ip: str) -> None:
+        if ip in verdicts or ip in queued_ips:
+            return
+        saved = gate_cache.get(ip)
+        if saved is not None:
+            gate.cached += 1
+            ok = bool(saved.get("ok"))
+            verdicts[ip] = Verdict(ok, "ok" if ok else "blocked", "доступен в РФ (кэш)" if ok else "заблокирован в РФ (кэш)")
+            return
+        queued_ips.add(ip)
+        submit(gate_pool, safe_cheburcheck, ip, ("gate", ip))
+
+    def decide(idx: int) -> None:
+        if idx not in waiting:
+            return
+        vs = [verdicts.get(ip) for ip in config_ips[idx]]
+        if any(v is not None and v.ok for v in vs):
+            waiting.discard(idx)
+            accepted.add(idx)
+            return
+        if any(v is None or v.transient for v in vs):
+            return
+        waiting.discard(idx)
+        rejected[idx] = next((v for v in vs if v.kind == "blocked"), vs[0]).kind
 
     with ThreadPoolExecutor(max_workers=max(1, MAX_WORKERS)) as check_pool, \
             ThreadPoolExecutor(max_workers=max(1, CHEBURCHECK_WORKERS)) as gate_pool:
-        pending = []
-        for ip in ip_users:
-            saved = gate_cache.get(ip)
-            if saved is None:
-                pending.append(ip)
+        for idx, ips in enumerate(config_ips):
+            if not ips:
+                gate.dns += 1
+                log(f"[dns] FAIL {proxy_label(configs[idx])} не удалось определить IP")
                 continue
-            gate.cached += 1
-            ok = bool(saved.get("ok"))
-            accept(ip, Verdict(ok, "ok" if ok else "blocked", "доступен в РФ (кэш)" if ok else "заблокирован в РФ (кэш)"))
-        print(f"[+] Cheburcheck: из кэша {gate.cached} IP, нужно запросить {len(pending)}")
-        for round_no in range(2):
-            if not pending:
-                break
-            if round_no:
-                log(f"[gate] повторная проверка {len(pending)} IP после временных ошибок Cheburcheck")
-                time.sleep(CHEBURCHECK_RECHECK_DELAY)
-            gate_futures = {gate_pool.submit(safe_cheburcheck, ip): ip for ip in pending}
-            for n, future in enumerate(as_completed(gate_futures), 1):
-                ip = gate_futures[future]
+            submit(check_pool, check_and_log, configs[idx], ("check", idx))
+
+        retry_round = 0
+        while True:
+            while outstanding:
+                tag, future = done_queue.get()
+                outstanding -= 1
+                if tag[0] == "check":
+                    idx = tag[1]
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        result = CheckResult(configs[idx], False, f"{type(e).__name__}", stage="other")
+                    results[idx] = result
+                    if result.ok:
+                        waiting.add(idx)
+                        for ip in config_ips[idx]:
+                            request_ip(ip)
+                        decide(idx)
+                    continue
+                ip = tag[1]
+                queued_ips.discard(ip)
                 verdict = future.result()
-                log(f"[gate {n}/{len(pending)}] {'PASS' if verdict.ok else 'FAIL'} {ip} {verdict.detail}")
+                log(f"[gate {next(gate_counter)}] {'PASS' if verdict.ok else 'FAIL'} {ip} {verdict.detail}")
                 if verdict.kind in {"ok", "blocked"}:
                     gate_cache.put(ip, ok=int(verdict.ok))
-                accept(ip, verdict)
-            pending = [
-                ip for ip in pending
-                if verdicts[ip].transient and any(idx not in submitted for idx in ip_users[ip])
+                verdicts[ip] = verdict
+                for idx in ip_users[ip]:
+                    decide(idx)
+            retry = [
+                ip for ip, v in verdicts.items()
+                if v.transient and any(idx in waiting for idx in ip_users[ip])
             ]
+            if retry_round >= 1 or not retry:
+                break
+            retry_round += 1
+            log(f"[gate] повторная проверка {len(retry)} IP после временных ошибок Cheburcheck")
+            time.sleep(CHEBURCHECK_RECHECK_DELAY)
+            for ip in retry:
+                del verdicts[ip]
+                request_ip(ip)
 
+        for idx in sorted(waiting):
+            vs = [verdicts[ip] for ip in config_ips[idx]]
+            rejected[idx] = next((v for v in vs if v.kind == "blocked"), vs[0]).kind
+        waiting.clear()
+
+        gate.passed = len(accepted)
+        gate.failed = len(rejected)
+        for kind in rejected.values():
+            gate.kinds[kind] += 1
         gate.requests = _chebur_limiter.calls
         gate.throttled = _chebur_limiter.throttled
-        for idx in range(len(configs)):
-            if idx in submitted:
-                gate.passed += 1
-                continue
-            gate.failed += 1
-            ips = config_ips[idx]
-            if not ips:
-                gate.kinds["dns"] += 1
-                log(f"[gate] FAIL {proxy_label(configs[idx])} не удалось определить IP")
-                continue
-            vs = [verdicts[ip] for ip in ips]
-            gate.kinds[next((v for v in vs if v.kind == "blocked"), vs[0]).kind] += 1
-        print(f"[+] Cheburcheck: прошло {gate.passed}, не прошло {gate.failed}")
 
-        results: dict[int, CheckResult] = {}
-        for future in as_completed(check_futures):
-            idx = check_futures[future]
-            try:
-                results[idx] = future.result()
-            except Exception as e:
-                results[idx] = CheckResult(configs[idx], False, f"{type(e).__name__}", stage="other")
-
-    ordered = [results[i] for i in sorted(results)]
-    return ordered, gate, Counter(r.stage for r in ordered)
-
+    passed_xray = sum(1 for r in results.values() if r.ok)
+    print(f"[+] Xray: проверено {len(results)}, прошло {passed_xray}")
+    print(f"[+] Cheburcheck: запросов {gate.requests}, из кэша {gate.cached}; прошло {gate.passed}, не прошло {gate.failed}")
+    ordered = [results[i] for i in sorted(results) if i not in rejected]
+    return ordered, gate, Counter(r.stage for r in results.values())
 
 #---------
 # ИСТОРИЯ
@@ -1277,21 +1315,23 @@ def build_report(
         f"Неизвестных строк: {collect.unsupported_lines}",
         f"Дубликатов удалено: {collect.duplicates}",
         f"Уникальных конфигов: {collect.unique}",
-        f"После Cheburcheck: {gate.passed}",
-        (
-            f"Cheburcheck FAIL: {gate.failed} (blocked: {k['blocked']}, "
-            f"HTTP: {k['http_429'] + k['http_5xx'] + k['http_other']}, 429: {k['http_429']}, 5xx: {k['http_5xx']}, "
-            f"timeout: {k['timeout']}, connection: {k['connection']}, dns: {k['dns']}, other: {k['other'] + k['bad_json']})"
-        ),
-        f"Cheburcheck запросов: {gate.requests} (из кэша IP: {gate.cached}, ответов 429: {gate.throttled})",
+        f"DNS FAIL: {gate.dns}",
         f"Режим проверки: {mode}",
-        f"Xray OK: {check['ok'] + unknown_total}",
+        f"Проверено Xray: {sum(check.values())}",
         f"Xray FAIL: {check['xray']}",
         f"Проверка доступности FAIL: {check['generate_204'] + check['tcp']} (generate_204: {check['generate_204']}, tcp: {check['tcp']})",
         f"Ошибка EXIT IP: {check['exit_ip']}",
         f"Ошибка страны: {check['country']}",
         f"Страна не определена, принято как «Неизвестно»: {unknown_total} (exit IP: {unknown_ip}, страна: {unknown_country})",
         f"Другие FAIL: {check['other']}",
+        f"Xray OK: {check['ok'] + unknown_total}",
+        f"Cheburcheck запросов: {gate.requests} (из кэша IP: {gate.cached}, ответов 429: {gate.throttled})",
+        (
+            f"Cheburcheck FAIL: {gate.failed} (blocked: {k['blocked']}, "
+            f"HTTP: {k['http_429'] + k['http_5xx'] + k['http_other']}, 429: {k['http_429']}, 5xx: {k['http_5xx']}, "
+            f"timeout: {k['timeout']}, connection: {k['connection']}, other: {k['other'] + k['bad_json']})"
+        ),
+        f"После Cheburcheck: {gate.passed}",
         "",
         "ПРОТОКОЛЫ ОСНОВНОЙ ПОДПИСКИ:",
         f"  VLESS: {protocols['vless']}",
