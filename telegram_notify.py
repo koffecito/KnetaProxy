@@ -117,7 +117,7 @@ def build_message(report: str) -> str:
     main_url, all_url = subscription_urls()
 
     lines = [
-        "📊 <b>KnetaProject</b>",
+        "📊 <b>Kneta</b>",
         "<b>Результаты проверки</b>",
         "",
         f"⚙️ Режим: <code>{mode}</code>",
