@@ -1,6 +1,0 @@
-title_main=Kneta • Основная Подписка
-title_all=Kneta • Полная Подписка
-update_interval=4
-support_url=https://t.me/KnetaProject
-announce=тг: @KnetaProject | BlackList
-name_suffix=[KP]
