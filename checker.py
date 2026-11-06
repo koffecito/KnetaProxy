@@ -18,6 +18,7 @@ import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Callable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
@@ -47,7 +48,7 @@ CHEBURCHECK_WORKERS = env_int("CHEBURCHECK_WORKERS", 4)
 CHEBURCHECK_RETRIES = env_int("CHEBURCHECK_RETRIES", 2)
 CHEBURCHECK_MIN_INTERVAL = env_float("CHEBURCHECK_MIN_INTERVAL", 0.8)
 CHEBURCHECK_MAX_INTERVAL = env_float("CHEBURCHECK_MAX_INTERVAL", 10)
-CHEBURCHECK_CACHE_HOURS = env_float("CHEBURCHECK_CACHE_HOURS", 24)
+CHEBURCHECK_CACHE_HOURS = env_float("CHEBURCHECK_CACHE_HOURS", 72)
 CHEBURCHECK_RECHECK_DELAY = env_float("CHEBURCHECK_RECHECK_DELAY", 10)
 
 XRAY_BIN = os.environ.get("XRAY_BIN", "xray")
@@ -116,6 +117,7 @@ OUTPUT_FILE = os.path.join(OUTPUT_DIR, "working.txt")
 ALL_FILE = os.path.join(OUTPUT_DIR, "all.txt")
 REPORT_FILE = os.path.join(OUTPUT_DIR, "report.txt")
 HISTORY_FILE = os.path.join(OUTPUT_DIR, "history.json")
+STATS_FILE = os.path.join(OUTPUT_DIR, "stats.json")
 
 
 def load_info_file(path: str = INFO_FILE) -> dict[str, str]:
@@ -1363,6 +1365,22 @@ def build_report(
     return lines
 
 
+def build_stats(good: list[CheckResult], main_list: list[CheckResult]) -> dict:
+    countries = Counter(item.exit_iso for item in main_list if item.exit_iso)
+    return {
+        "updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "total": len(good),
+        "main": len(main_list),
+        "countries": len({item.exit_iso for item in good if item.exit_iso}),
+        "unknown_country": sum(1 for item in good if not item.exit_iso),
+        "protocols": dict(Counter(item.proxy.scheme for item in good)),
+        "top_countries": [
+            {"iso": iso, "name": country_name(iso), "count": count}
+            for iso, count in countries.most_common(10)
+        ],
+    }
+
+
 def save_results(
     results: list[CheckResult],
     history: dict,
@@ -1381,6 +1399,7 @@ def save_results(
     if good:
         write_subscription(OUTPUT_FILE, main_list, INFO["title_main"])
         write_subscription(ALL_FILE, good, INFO["title_all"])
+        write_text_atomic(STATS_FILE, json.dumps(build_stats(good, main_list), ensure_ascii=False, indent=2) + "\n")
 
     lines = build_report(good, main_list, collect, source_errors, gate, check, mode, kept_old)
     write_text_atomic(REPORT_FILE, "\n".join(lines) + "\n")

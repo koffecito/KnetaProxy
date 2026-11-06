@@ -316,9 +316,9 @@ Promise.all(["main","all"].map(k=>fetch(URLS[k],{cache:"no-store"}).then(r=>r.ok
   if(b)$("#c2").textContent=plural(b.length,["конфигурация","конфигурации","конфигураций"]);
   showStats(a?"main":"all");
 });
-fetch(raw("updated.txt"),{cache:"no-store"})
-  .then(r=>r.ok?r.text():Promise.reject())
-  .then(t=>{const d=new Date(t.trim());if(isNaN(d))return Promise.reject();return d})
+fetch(raw("stats.json"),{cache:"no-store"})
+  .then(r=>r.ok?r.json():Promise.reject())
+  .then(j=>{const d=new Date(j.updated);if(isNaN(d))return Promise.reject();return d})
   .catch(()=>CFG.owner?fetch(`https://api.github.com/repos/${CFG.owner}/${CFG.repo}/commits?path=proxies/working.txt&per_page=1`).then(r=>r.json()).then(j=>new Date(j[0].commit.committer.date)):Promise.reject())
   .then(d=>{UPD.at=d;paintUpd()})
   .catch(()=>{});
