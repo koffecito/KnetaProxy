@@ -38,8 +38,8 @@ def env_float(name: str, default: float) -> float:
 
 
 SUBSCRIPTIONS_ENV = "SUBSCRIPTIONS"
-TYPE_FILE = os.environ.get("TYPE_FILE", "type.txt")
-INFO_FILE = os.environ.get("INFO_FILE", "info.txt")
+TYPE_FILE = os.environ.get("TYPE_FILE", "other/type.txt")
+INFO_FILE = os.environ.get("INFO_FILE", "other/info.txt")
 VALID_MODES = ("generate_204", "tcp", "no")
 
 CHEBURCHECK_URL = os.environ.get("CHEBURCHECK_URL", "https://cheburcheck.ru/api/v1/check")
@@ -112,7 +112,7 @@ for _target in os.environ.get("TCP_TARGETS", "1.1.1.1:443").split(","):
         TCP_TARGETS.append(_parsed)
 
 SUPPORTED_SCHEMES = ("vless", "vmess", "trojan", "hysteria2", "hy2")
-OUTPUT_DIR = "proxies"
+OUTPUT_DIR = "sub"
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "working.txt")
 ALL_FILE = os.path.join(OUTPUT_DIR, "all.txt")
 REPORT_FILE = os.path.join(OUTPUT_DIR, "report.txt")
