@@ -3,7 +3,12 @@ name: Check proxies
 on:
   schedule:
     - cron: "0 4,16 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      xray_version:
+        description: "Версия Xray-core (например v26.10.21), пусто — версия по умолчанию"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -14,6 +19,7 @@ concurrency:
 
 env:
   PYTHONUNBUFFERED: "1"
+  XRAY_VERSION: ${{ inputs.xray_version || 'v26.10.21' }}
 
 jobs:
   check:
@@ -30,16 +36,34 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install Xray-core
-        env:
-          TERM: xterm
+      - name: Restore Xray-core cache
+        id: xray-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/xray-bin
+          key: xray-${{ env.XRAY_VERSION }}-linux-64
+
+      - name: Download Xray-core
+        if: steps.xray-cache.outputs.cache-hit != 'true'
         run: |
-          sudo env TERM=xterm bash -c "$(curl -fL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" || true
-          if ! command -v xray >/dev/null 2>&1; then
-            curl -fL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 180 -o /tmp/xray.zip https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
-            sudo unzip -o /tmp/xray.zip xray -d /usr/local/bin
-            sudo chmod +x /usr/local/bin/xray
+          set -euo pipefail
+          base="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}"
+          mkdir -p ~/xray-bin
+          curl -fL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 180 -o /tmp/xray.zip "$base/Xray-linux-64.zip"
+          if curl -fsL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 60 -o /tmp/xray.zip.dgst "$base/Xray-linux-64.zip.dgst"; then
+            expected="$(grep -i -m1 -E '^SHA(2-)?256=' /tmp/xray.zip.dgst | sed 's/^[^=]*=[[:space:]]*//' | tr -d '[:space:]' | tr 'A-F' 'a-f')"
+            actual="$(sha256sum /tmp/xray.zip | cut -d' ' -f1)"
+            if [ -n "$expected" ] && [ "$expected" != "$actual" ]; then
+              echo "Xray checksum mismatch: expected $expected, got $actual" >&2
+              exit 1
+            fi
           fi
+          unzip -o /tmp/xray.zip xray -d ~/xray-bin
+          chmod +x ~/xray-bin/xray
+
+      - name: Install Xray-core
+        run: |
+          sudo install -m 0755 ~/xray-bin/xray /usr/local/bin/xray
           xray version
 
       - name: Install Python deps
@@ -60,7 +84,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add proxies/working.txt proxies/all.txt proxies/report.txt proxies/history.json
+          git add proxies/working.txt proxies/all.txt proxies/report.txt proxies/history.json proxies/stats.json
           git diff --staged --quiet || git commit -m "chore: update proxy results [skip ci]"
           git push || { git pull --rebase && git push; }
 
