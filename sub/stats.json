@@ -1,0 +1,65 @@
+{
+  "updated": "2026-11-06T19:03:18Z",
+  "total": 384,
+  "main": 100,
+  "countries": 39,
+  "unknown_country": 24,
+  "protocols": {
+    "vless": 371,
+    "vmess": 6,
+    "hysteria2": 6,
+    "trojan": 1
+  },
+  "top_countries": [
+    {
+      "iso": "RO",
+      "name": "Румыния",
+      "count": 29
+    },
+    {
+      "iso": "US",
+      "name": "США",
+      "count": 22
+    },
+    {
+      "iso": "CA",
+      "name": "Канада",
+      "count": 22
+    },
+    {
+      "iso": "BY",
+      "name": "Беларусь",
+      "count": 7
+    },
+    {
+      "iso": "NL",
+      "name": "Нидерланды",
+      "count": 5
+    },
+    {
+      "iso": "PL",
+      "name": "Польша",
+      "count": 3
+    },
+    {
+      "iso": "BG",
+      "name": "Болгария",
+      "count": 2
+    },
+    {
+      "iso": "ES",
+      "name": "Испания",
+      "count": 2
+    },
+    {
+      "iso": "MD",
+      "name": "Молдова",
+      "count": 2
+    },
+    {
+      "iso": "RU",
+      "name": "Россия",
+      "count": 1
+    }
+  ]
+}
