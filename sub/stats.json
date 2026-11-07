@@ -1,49 +1,49 @@
 {
-  "updated": "2026-11-07T10:57:23Z",
-  "total": 332,
+  "updated": "2026-11-07T19:52:12Z",
+  "total": 324,
   "main": 100,
-  "countries": 33,
-  "unknown_country": 10,
+  "countries": 37,
+  "unknown_country": 16,
   "protocols": {
-    "vless": 315,
-    "trojan": 2,
+    "vless": 314,
     "vmess": 1,
-    "hysteria2": 14
+    "hysteria2": 8,
+    "trojan": 1
   },
   "top_countries": [
     {
       "iso": "RO",
       "name": "Румыния",
-      "count": 27
-    },
-    {
-      "iso": "US",
-      "name": "США",
-      "count": 25
+      "count": 46
     },
     {
       "iso": "CA",
       "name": "Канада",
-      "count": 24
-    },
-    {
-      "iso": "NL",
-      "name": "Нидерланды",
-      "count": 5
+      "count": 23
     },
     {
       "iso": "BY",
       "name": "Беларусь",
-      "count": 4
+      "count": 6
     },
     {
-      "iso": "PL",
-      "name": "Польша",
-      "count": 3
+      "iso": "US",
+      "name": "США",
+      "count": 5
+    },
+    {
+      "iso": "NL",
+      "name": "Нидерланды",
+      "count": 4
     },
     {
       "iso": "BG",
       "name": "Болгария",
+      "count": 3
+    },
+    {
+      "iso": "PL",
+      "name": "Польша",
       "count": 2
     },
     {
@@ -57,8 +57,8 @@
       "count": 2
     },
     {
-      "iso": "RU",
-      "name": "Россия",
+      "iso": "KR",
+      "name": "Южная Корея",
       "count": 1
     }
   ]
