@@ -2,7 +2,7 @@
 
 <img src="other/logo.png" width="130" alt="Kneta">
 
-# Kneta
+# KnetaProject
 
 **Автоматическая проверка прокси-конфигов и сборка готовых подписок**
 
