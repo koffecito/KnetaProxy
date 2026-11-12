@@ -24,7 +24,7 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout repo
@@ -78,6 +78,7 @@ jobs:
       - name: Run checker
         env:
           SUBSCRIPTIONS: ${{ secrets.SUBSCRIPTIONS }}
+          CACHE_SALT: ${{ secrets.CACHE_SALT }}
           CHEBURCHECK_CACHE_HOURS: "48"
         run: python checker.py
 
