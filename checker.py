@@ -48,12 +48,16 @@ CHEBURCHECK_WORKERS = env_int("CHEBURCHECK_WORKERS", 4)
 CHEBURCHECK_RETRIES = env_int("CHEBURCHECK_RETRIES", 2)
 CHEBURCHECK_MIN_INTERVAL = env_float("CHEBURCHECK_MIN_INTERVAL", 0.8)
 CHEBURCHECK_MAX_INTERVAL = env_float("CHEBURCHECK_MAX_INTERVAL", 10)
+CHEBURCHECK_PAUSE_429 = env_float("CHEBURCHECK_PAUSE_429", 5)
 CHEBURCHECK_CACHE_HOURS = env_float("CHEBURCHECK_CACHE_HOURS", 48)
 CHEBURCHECK_RECHECK_DELAY = env_float("CHEBURCHECK_RECHECK_DELAY", 10)
 
 XRAY_BIN = os.environ.get("XRAY_BIN", "xray")
 XRAY_READY_TIMEOUT = env_float("XRAY_READY_TIMEOUT", 5)
 REQUEST_TIMEOUT = env_float("REQUEST_TIMEOUT", 5)
+TCP_PRECHECK_TIMEOUT = env_float("TCP_PRECHECK_TIMEOUT", 3)
+TCP_PRECHECK_MAX_IPS = env_int("TCP_PRECHECK_MAX_IPS", 2)
+GENERATE_204_STOP_ON_TIMEOUT = env_int("GENERATE_204_STOP_ON_TIMEOUT", 1)
 
 EXIT_IP_API_URLS = tuple(
     x.strip()
@@ -310,8 +314,11 @@ class RateLimiter:
 
     SUCCESSES_TO_RELAX = 15
 
-    def __init__(self, interval: float, max_interval: float | None = None) -> None:
+    def __init__(
+        self, interval: float, max_interval: float | None = None, fixed_pause: float | None = None
+    ) -> None:
         self.base = interval
+        self.fixed_pause = fixed_pause
         self.interval = interval
         self.max_interval = max(interval, max_interval or interval)
         self.calls = 0
@@ -341,10 +348,11 @@ class RateLimiter:
             now = time.monotonic()
             self.throttled += 1
             self._ok_streak = 0
-            if now - self._last_adjust >= self.interval:
+            if self.fixed_pause is None and now - self._last_adjust >= self.interval:
                 self.interval = min(self.max_interval, max(self.interval * 2, self.base))
                 self._last_adjust = now
-            pause = min(max(retry_after or 0.0, self.interval), 60.0)
+            floor = self.interval if self.fixed_pause is None else self.fixed_pause
+            pause = min(max(retry_after or 0.0, floor), 60.0)
             self._blocked_until = max(self._blocked_until, now + pause)
             self._next = max(self._next, self._blocked_until)
 
@@ -635,7 +643,11 @@ def collect_configs() -> tuple[list[ProxyConfig], CollectStats, list[str]]:
 #---------
 
 TRANSIENT_KINDS = {"http_429", "http_5xx", "timeout", "connection"}
-_chebur_limiter = RateLimiter(CHEBURCHECK_MIN_INTERVAL, CHEBURCHECK_MAX_INTERVAL)
+_chebur_limiter = RateLimiter(
+    CHEBURCHECK_MIN_INTERVAL,
+    CHEBURCHECK_MAX_INTERVAL,
+    CHEBURCHECK_PAUSE_429 if CHEBURCHECK_PAUSE_429 > 0 else None,
+)
 _country_limiter = RateLimiter(COUNTRY_MIN_INTERVAL, COUNTRY_MAX_INTERVAL)
 _geo_cache = TtlCache({}, 0)
 
@@ -902,6 +914,11 @@ def check_generate_204(proxies: dict[str, str]) -> tuple[bool, str]:
                 allow_redirects=False,
                 headers={"Connection": "close", "User-Agent": "KnetaProxy/1.0"},
             )
+        except requests.Timeout as e:
+            if GENERATE_204_STOP_ON_TIMEOUT:
+                return False, exception_text("generate_204", e)
+            errors.append(exception_text("generate_204", e))
+            continue
         except requests.RequestException as e:
             errors.append(exception_text("generate_204", e))
             continue
@@ -1027,9 +1044,35 @@ def lookup_country(ip: str) -> tuple[str, str]:
     return iso, ""
 
 
-def check_single_proxy(proxy: ProxyConfig, mode: str, workdir: str) -> CheckResult:
+UDP_TRANSPORTS = {"kcp", "mkcp", "quic"}
+
+
+def uses_tcp(proxy: ProxyConfig) -> bool:
+    if proxy.scheme == "hysteria2":
+        return False
+    return str(proxy.params.get("type", "tcp")).lower() not in UDP_TRANSPORTS
+
+
+def tcp_reachable(ips: list[str], port: int) -> tuple[bool, str]:
+    last_error = "tcp: нет IP для проверки"
+    for ip in ips[: max(1, TCP_PRECHECK_MAX_IPS)]:
+        try:
+            with socket.create_connection((ip, port), timeout=TCP_PRECHECK_TIMEOUT):
+                return True, ""
+        except OSError as e:
+            last_error = exception_text("tcp", e)
+    return False, last_error
+
+
+def check_single_proxy(
+    proxy: ProxyConfig, mode: str, workdir: str, ips: list[str] | None = None
+) -> CheckResult:
     proc = None
     try:
+        if mode == "generate_204" and TCP_PRECHECK_TIMEOUT > 0 and ips and uses_tcp(proxy):
+            reachable, reason = tcp_reachable(ips, proxy.port)
+            if not reachable:
+                return CheckResult(proxy, False, reason, stage="tcp")
         launched = launch_xray(proxy, workdir)
         if launched is None:
             return CheckResult(proxy, False, "xray не запустился", stage="xray")
@@ -1104,8 +1147,9 @@ def run_pipeline(
     accepted: set[int] = set()
     rejected: dict[int, str] = {}
 
-    def check_and_log(proxy: ProxyConfig) -> CheckResult:
-        result = check_single_proxy(proxy, mode, workdir)
+    def check_and_log(idx: int) -> CheckResult:
+        proxy = configs[idx]
+        result = check_single_proxy(proxy, mode, workdir, config_ips[idx])
         status = "OK  " if result.ok else "FAIL"
         if result.ok and result.exit_iso:
             extra = f"{result.exit_ip} | {result.exit_iso}"
@@ -1154,7 +1198,7 @@ def run_pipeline(
                 gate.dns += 1
                 log(f"[dns] FAIL {proxy_label(configs[idx])} не удалось определить IP")
                 continue
-            submit(check_pool, check_and_log, configs[idx], ("check", idx))
+            submit(check_pool, check_and_log, idx, ("check", idx))
 
         retry_round = 0
         while True:
