@@ -8,7 +8,7 @@
 
 [![Telegram](https://img.shields.io/badge/Telegram-@KnetaProject-26A5E4?logo=telegram&logoColor=white)](https://t.me/KnetaProject)
 [![Проверка](https://github.com/koffecito/KnetaProxy/actions/workflows/check-proxies.yml/badge.svg)](https://github.com/koffecito/KnetaProxy/actions/workflows/check-proxies.yml)
-![Рабочих](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.total&label=рабочих&color=21A038)
+![Полная](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.total&label=рабочих&color=21A038)
 ![Основная](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.main&label=в%20основной&color=3BD35F)
 ![Стран](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.countries&label=стран&color=00B8A9)
 
