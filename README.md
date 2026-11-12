@@ -7,12 +7,13 @@
 **Автоматическая проверка прокси-конфигов и сборка готовых подписок**
 
 [![Telegram](https://img.shields.io/badge/Telegram-@KnetaProject-26A5E4?logo=telegram&logoColor=white)](https://t.me/KnetaProject)
-![Обновление](https://img.shields.io/badge/обновление-2%20раза%20в%20день-21A038)
+[![Проверка](https://github.com/koffecito/KnetaProxy/actions/workflows/check-proxies.yml/badge.svg)](https://github.com/koffecito/KnetaProxy/actions/workflows/check-proxies.yml)
+![Рабочих](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.total&label=рабочих&color=21A038)
+![Основная](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.main&label=в%20основной&color=3BD35F)
+![Стран](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.countries&label=стран&color=00B8A9)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
-![Xray](https://img.shields.io/badge/Xray--core-проверка-00B8A9)
-![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-2088FF?logo=githubactions&logoColor=white)
 
-[Основная подписка](sub/working.txt) · [Полная подписка](sub/all.txt) · [Отчёт](sub/report.txt) · [Канал](https://t.me/KnetaProject)
+[Основная подписка](https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/working.txt) · [Полная подписка](https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/all.txt) · [Отчёт](sub/report.txt) · [Канал](https://t.me/KnetaProject)
 
 </div>
 
@@ -28,6 +29,7 @@ Kneta разбирает конфигурации из ваших источни
 ## 📑 Содержание
 
 - [⚡ Быстрый старт](#-быстрый-старт)
+- [🔗 Ссылки на подписки](#-ссылки-на-подписки)
 - [✨ Возможности](#-возможности)
 - [🔄 Как работает проект](#-как-работает-проект)
 - [📋 1. Настройка источников подписок](#-1-настройка-источников-подписок)
@@ -56,6 +58,25 @@ Kneta разбирает конфигурации из ваших источни
 5. **Результат.** В папке [`sub/`](sub/) появятся `working.txt` и `all.txt`.
 
 Дальше проверка идёт сама: **04:00 и 16:00 UTC**.
+
+## 🔗 Ссылки на подписки
+
+Эти ссылки можно вставлять в VPN-клиент как подписку. Они обновляются после каждой проверки.
+
+**Основная** (до 100 лучших конфигов):
+
+```text
+https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/working.txt
+```
+
+**Полная** (все прошедшие проверку):
+
+```text
+https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/all.txt
+```
+
+> [!NOTE]
+> Ссылки работают, пока репозиторий публичный. Если сделать его приватным, `raw.githubusercontent.com` перестанет отдавать файлы без авторизации.
 
 ## ✨ Возможности
 
