@@ -40,9 +40,6 @@ Kneta собирает конфиги из ваших источников, пр
 | Основная (до 100 лучших) | `https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/working.txt` |
 | Полная (все рабочие) | `https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/all.txt` |
 
-> [!NOTE]
-> Ссылки работают, пока репозиторий публичный.
-
 ## 🔄 Как это работает
 
 Kneta берёт много чужих конфигов и оставляет из них только те, которые реально работают и не заблокированы в РФ. Для этого каждый конфиг проходит несколько фильтров.
