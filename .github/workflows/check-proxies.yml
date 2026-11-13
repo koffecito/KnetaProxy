@@ -24,7 +24,7 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repo
@@ -82,18 +82,18 @@ jobs:
           CHEBURCHECK_CACHE_HOURS: "48"
         run: python checker.py
 
-      - name: Commit and push result
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A sub/
-          git diff --staged --quiet || git commit -m "chore: update proxy results [skip ci]"
-          git push || { git pull --rebase && git push; }
-
       - name: Send Telegram stats
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         if: ${{ env.TELEGRAM_BOT_TOKEN != '' }}
         continue-on-error: true
         run: python telegram/telegram_notify.py
+
+      - name: Commit and push result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A sub/ telegram/
+          git diff --staged --quiet || git commit -m "chore: update proxy results [skip ci]"
+          git push || { git pull --rebase && git push; }
 
