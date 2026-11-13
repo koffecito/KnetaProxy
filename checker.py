@@ -46,10 +46,11 @@ VALID_MODES = ("generate_204", "tcp", "no")
 CHEBURCHECK_URL = os.environ.get("CHEBURCHECK_URL", "https://cheburcheck.ru/api/v1/check")
 CHEBURCHECK_TIMEOUT = env_float("CHEBURCHECK_TIMEOUT", 5)
 CHEBURCHECK_WORKERS = env_int("CHEBURCHECK_WORKERS", 4)
-CHEBURCHECK_RETRIES = env_int("CHEBURCHECK_RETRIES", 2)
-CHEBURCHECK_MIN_INTERVAL = env_float("CHEBURCHECK_MIN_INTERVAL", 0.8)
-CHEBURCHECK_MAX_INTERVAL = env_float("CHEBURCHECK_MAX_INTERVAL", 10)
+CHEBURCHECK_RETRIES = env_int("CHEBURCHECK_RETRIES", 1)
+CHEBURCHECK_MIN_INTERVAL = env_float("CHEBURCHECK_MIN_INTERVAL", 4.0)
+CHEBURCHECK_MAX_INTERVAL = env_float("CHEBURCHECK_MAX_INTERVAL", 12)
 CHEBURCHECK_CACHE_HOURS = env_float("CHEBURCHECK_CACHE_HOURS", 48)
+CHEBURCHECK_BLOCKED_CACHE_HOURS = env_float("CHEBURCHECK_BLOCKED_CACHE_HOURS", 168)
 CHEBURCHECK_RECHECK_DELAY = env_float("CHEBURCHECK_RECHECK_DELAY", 10)
 
 XRAY_BIN = os.environ.get("XRAY_BIN", "xray")
@@ -80,7 +81,7 @@ COUNTRY_CACHE_DAYS = env_float("COUNTRY_CACHE_DAYS", 14)
 MAX_WORKERS = env_int("MAX_WORKERS", 32)
 MAX_PROXIES = env_int("MAX_PROXIES", 100)
 HISTORY_KEEP_RUNS = env_int("HISTORY_KEEP_RUNS", 30)
-MAX_RUNTIME_MINUTES = env_float("MAX_RUNTIME_MINUTES", 30)
+MAX_RUNTIME_MINUTES = env_float("MAX_RUNTIME_MINUTES", 90)
 START_TIME = time.monotonic()
 
 SITE_RETRIES = env_int("SITE_RETRIES", 2)
@@ -314,7 +315,11 @@ def get_with_retry(
 
 class RateLimiter:
 
-    SUCCESSES_TO_RELAX = 15
+    SUCCESSES_TO_RELAX = 20
+
+    GROWTH = 1.5
+
+    RELAX = 0.9
 
     JITTER = 0.3
 
@@ -352,7 +357,7 @@ class RateLimiter:
             self.throttled += 1
             self._ok_streak = 0
             if now - self._last_adjust >= self.interval:
-                self.interval = min(self.max_interval, max(self.interval * 2, self.base))
+                self.interval = min(self.max_interval, max(self.interval * self.GROWTH, self.base))
                 self._last_adjust = now
             pause = min(max(retry_after or 0.0, self.interval), 60.0)
             self._blocked_until = max(self._blocked_until, now + pause)
@@ -366,7 +371,7 @@ class RateLimiter:
         with self._lock:
             self._ok_streak += 1
             if self._ok_streak >= self.SUCCESSES_TO_RELAX and self.interval > self.base:
-                self.interval = max(self.base, self.interval * 0.8)
+                self.interval = max(self.base, self.interval * self.RELAX)
                 self._ok_streak = 0
 
     def feedback(self, response: requests.Response) -> None:
@@ -395,9 +400,10 @@ class TtlCache:
             return item
         return None
 
-    def put(self, ip: str, **fields) -> None:
+    def put(self, ip: str, ttl_seconds: float | None = None, **fields) -> None:
         if self.ttl > 0:
-            self.entries[self.key(ip)] = {**fields, "exp": int(time.time() + self.ttl * random.uniform(0.25, 1.0))}
+            ttl = self.ttl if ttl_seconds is None else ttl_seconds
+            self.entries[self.key(ip)] = {**fields, "exp": int(time.time() + ttl * random.uniform(0.25, 1.0))}
 
     def prune(self) -> None:
         now = time.time()
@@ -1185,7 +1191,11 @@ def run_pipeline(
         if mode == "generate_204" and result.stage == "tcp":
             log(f"[tcp {next(tcp_counter)}] FAIL {proxy_label(proxy)} {extra}")
         else:
-            log(f"[xray {next(xray_counter)}] {status} {proxy_label(proxy)} {extra}")
+            port_checked = (
+                mode == "generate_204" and TCP_PRECHECK_TIMEOUT > 0 and bool(config_ips[idx]) and uses_tcp(proxy)
+            )
+            mark = " (tcp ок)" if port_checked else ""
+            log(f"[xray {next(xray_counter)}] {status}{mark} {proxy_label(proxy)} {extra}")
         return result
 
     def submit(pool: ThreadPoolExecutor, fn: Callable, arg, tag: tuple) -> None:
@@ -1255,7 +1265,11 @@ def run_pipeline(
                 verdict = future.result()
                 log(f"[gate {next(gate_counter)}] {'PASS' if verdict.ok else 'FAIL'} {ip} {verdict.detail}")
                 if verdict.kind in {"ok", "blocked"}:
-                    gate_cache.put(ip, ok=int(verdict.ok))
+                    gate_cache.put(
+                        ip,
+                        ttl_seconds=None if verdict.ok else CHEBURCHECK_BLOCKED_CACHE_HOURS * 3600,
+                        ok=int(verdict.ok),
+                    )
                 verdicts[ip] = verdict
                 for idx in ip_users[ip]:
                     decide(idx)

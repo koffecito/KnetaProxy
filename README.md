@@ -8,15 +8,15 @@
 
 [![Telegram](https://img.shields.io/badge/Telegram-@KnetaProject-26A5E4?logo=telegram&logoColor=white)](https://t.me/KnetaProject)
 [![Проверка](https://github.com/koffecito/KnetaProxy/actions/workflows/check-proxies.yml/badge.svg)](https://github.com/koffecito/KnetaProxy/actions/workflows/check-proxies.yml)
-![Полная](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.total&label=рабочих&color=21A038)
-![Основная](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.main&label=в%20основной&color=3BD35F)
-![Стран](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.countries&label=стран&color=00B8A9)
+![Полная](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.total&label=Полная&color=21A038)
+![Основная](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.main&label=Основная&color=3BD35F)
+![Стран](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.countries&label=Стран&color=00B8A9)
 
 [Основная подписка](https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/working.txt) · [Полная подписка](https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/all.txt) · [Отчёт](sub/report.txt) · [Канал](https://t.me/KnetaProject)
 
 </div>
 
-Kneta собирает конфиги из ваших источников, проверяет их через Xray, отсеивает IP, заблокированные в РФ, и выкладывает готовые подписки. Работает на GitHub Actions по расписанию, при желании шлёт сводку в Telegram.
+Kneta собирает конфиги из разных источников, проверяет их через Xray, отсеивает IP, заблокированные в РФ, и выкладывает готовые подписки. Работает на GitHub Actions по расписанию, при желании шлёт сводку в Telegram.
 
 > [!WARNING]
 > **Kneta не предоставляет VPN и не гарантирует безопасность чужих серверов.**
@@ -118,7 +118,8 @@ https://example.com/subscription-two
 | `REQUEST_TIMEOUT` | 5 | Таймаут запроса `generate_204`, сек |
 | `GENERATE_204_URLS` | gstatic, cloudflare | Адреса проверки, через запятую |
 | `CHEBURCHECK_CACHE_HOURS` | 48 | Срок хранения вердикта по IP, часы |
-| `CHEBURCHECK_MAX_INTERVAL` | 10 | Максимальный интервал между запросами при 429, сек |
+| `CHEBURCHECK_MIN_INTERVAL` | 4 | Обычный интервал между запросами к Cheburcheck, сек |
+| `CHEBURCHECK_MAX_INTERVAL` | 12 | Максимальный интервал между запросами при 429, сек |
 
 Названия подписок, интервал обновления и анонс задаются в `other/info.txt`.
 
@@ -140,7 +141,7 @@ https://example.com/subscription-two
 
 - **Автоматически:** 04:00 и 16:00 UTC.
 - **Вручную:** **Actions → Check proxies → Run workflow**. В поле `xray_version` можно указать другую версию Xray-core, пустое поле берёт версию из workflow.
-- Одновременно идёт только один запуск, лимит времени 40 минут.
+- Одновременно идёт только один запуск, лимит времени 120 минут (Cheburcheck-этап останавливается на 90-й минуте и сохраняет всё, что успел).
 
 > [!NOTE]
 > Первый запуск на пустом кэше (или после смены `CACHE_SALT`) идёт заметно дольше: все IP проверяются заново. Дальше будет быстрее.
@@ -153,6 +154,8 @@ https://example.com/subscription-two
 <br>
 
 Без этого всё работает, просто сообщения не приходят.
+
+Бот не спамит: он отправляет одно сообщение и дальше **редактирует его**, а вверху показывает время последнего обновления по МСК. ID сообщения хранится в `telegram/message_ids.json` (файл создаётся сам). Если сообщение удалить, бот отправит новое.
 
 **1. Бот.** В Telegram откройте **@BotFather**, отправьте `/newbot`, задайте имя и username (на `bot` в конце). Токен добавьте в секрет `TELEGRAM_BOT_TOKEN`.
 
