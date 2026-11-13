@@ -5,15 +5,18 @@
 #---------
 
 import html
+import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
 REPORT_FILE = "sub/report.txt"
 CHATS_FILE = "telegram/telegram_chats.txt"
+MESSAGES_FILE = "telegram/message_ids.json"
+MSK = timezone(timedelta(hours=3))
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 REPORT_MAX_COUNTRIES = int(os.environ.get("REPORT_MAX_COUNTRIES", "10"))
 TELEGRAM_TIMEOUT = float(os.environ.get("TELEGRAM_TIMEOUT", "15"))
@@ -100,7 +103,7 @@ def subscription_urls() -> tuple[str, str]:
 
 
 def build_message(report: str) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(MSK)
     mode = html.escape(get_mode(report))
 
     received = get_int(report, r"^Получено ссылок:\s*(\d+)$")
@@ -117,11 +120,12 @@ def build_message(report: str) -> str:
     main_url, all_url = subscription_urls()
 
     lines = [
+        f"🕐 Последнее обновление: <b>{now.strftime('%d.%m.%Y %H:%M')} МСК</b>",
+        "",
         "📊 <b>Kneta</b>",
         "<b>Результаты проверки</b>",
         "",
         f"⚙️ Режим: <code>{mode}</code>",
-        f"🕐 Обновлено: <code>{now.strftime('%d.%m.%Y %H:%M')} UTC</code>",
         "",
         "━━━━━━━━━━━━━━━━━━",
         "",
@@ -177,18 +181,73 @@ def build_message(report: str) -> str:
     return "\n".join(lines)
 
 
-def send_message(chat_id: str, message: str) -> None:
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    response = requests.post(
-        url,
-        json={"chat_id": chat_id, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True},
-        timeout=TELEGRAM_TIMEOUT,
+def load_message_ids() -> dict[str, int]:
+    if not os.path.exists(MESSAGES_FILE):
+        return {}
+    try:
+        with open(MESSAGES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): int(v) for k, v in data.items() if isinstance(v, int)}
+
+
+def save_message_ids(ids: dict[str, int]) -> None:
+    with open(MESSAGES_FILE, "w", encoding="utf-8") as f:
+        json.dump(ids, f, ensure_ascii=False, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+def api_call(method: str, payload: dict) -> dict:
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+    response = requests.post(url, json=payload, timeout=TELEGRAM_TIMEOUT)
+    try:
+        data = response.json()
+    except ValueError:
+        data = {}
+    if response.status_code != 200 or not data.get("ok"):
+        description = data.get("description") or response.text[:500]
+        raise RuntimeError(f"HTTP {response.status_code}: {description}")
+    return data
+
+
+def send_message(chat_id: str, message: str) -> int:
+    data = api_call(
+        "sendMessage",
+        {"chat_id": chat_id, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True},
     )
-    if response.status_code != 200:
-        raise RuntimeError(f"HTTP {response.status_code}: {response.text[:500]}")
-    data = response.json()
-    if not data.get("ok"):
-        raise RuntimeError(data.get("description", "Telegram API error"))
+    return int(data["result"]["message_id"])
+
+
+def edit_message(chat_id: str, message_id: int, message: str) -> None:
+    try:
+        api_call(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": message,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
+        )
+    except RuntimeError as exc:
+        if "message is not modified" not in str(exc):
+            raise
+
+
+def deliver(chat_id: str, message: str, ids: dict[str, int]) -> str:
+    message_id = ids.get(chat_id)
+    if message_id is not None:
+        try:
+            edit_message(chat_id, message_id, message)
+            return "обновлено"
+        except RuntimeError as exc:
+            print(f"[!] Telegram: не удалось изменить сообщение в {chat_id} ({exc}), отправляю новое")
+    ids[chat_id] = send_message(chat_id, message)
+    return "отправлено новое"
 
 
 def main() -> None:
@@ -208,14 +267,16 @@ def main() -> None:
         report = f.read()
     message = build_message(report)
 
+    ids = load_message_ids()
     failed = 0
     for chat_id in chats:
         try:
-            send_message(chat_id, message)
-            print(f"[+] Telegram: отправлено в {chat_id}")
+            action = deliver(chat_id, message, ids)
+            print(f"[+] Telegram: {action} в {chat_id}")
         except Exception as exc:
             failed += 1
             print(f"[!] Telegram: ошибка для {chat_id}: {exc}", file=sys.stderr)
+    save_message_ids(ids)
 
     if failed:
         sys.exit(1)
