@@ -80,6 +80,8 @@ COUNTRY_CACHE_DAYS = env_float("COUNTRY_CACHE_DAYS", 14)
 MAX_WORKERS = env_int("MAX_WORKERS", 32)
 MAX_PROXIES = env_int("MAX_PROXIES", 100)
 HISTORY_KEEP_RUNS = env_int("HISTORY_KEEP_RUNS", 30)
+MAX_RUNTIME_MINUTES = env_float("MAX_RUNTIME_MINUTES", 30)
+START_TIME = time.monotonic()
 
 SITE_RETRIES = env_int("SITE_RETRIES", 2)
 SITE_RETRY_BACKOFF = env_float("SITE_RETRY_BACKOFF", 0.8)
@@ -316,7 +318,8 @@ class RateLimiter:
 
     JITTER = 0.3
 
-    def __init__(self, interval: float, max_interval: float | None = None) -> None:
+    def __init__(self, interval: float, max_interval: float | None = None, name: str = "rate") -> None:
+        self.name = name
         self.base = interval
         self.interval = interval
         self.max_interval = max(interval, max_interval or interval)
@@ -344,6 +347,7 @@ class RateLimiter:
 
     def throttle(self, retry_after: float | None = None) -> None:
         with self._lock:
+            before = self.interval
             now = time.monotonic()
             self.throttled += 1
             self._ok_streak = 0
@@ -353,6 +357,10 @@ class RateLimiter:
             pause = min(max(retry_after or 0.0, self.interval), 60.0)
             self._blocked_until = max(self._blocked_until, now + pause)
             self._next = max(self._next, self._blocked_until)
+            after = self.interval
+        if after != before:
+            ra = f", Retry-After {retry_after:g} с" if retry_after else ""
+            log(f"[{self.name}] 429: интервал {before:.1f} -> {after:.1f} с, пауза {pause:.1f} с{ra}")
 
     def success(self) -> None:
         with self._lock:
@@ -641,8 +649,8 @@ def collect_configs() -> tuple[list[ProxyConfig], CollectStats, list[str]]:
 #---------
 
 TRANSIENT_KINDS = {"http_429", "http_5xx", "timeout", "connection"}
-_chebur_limiter = RateLimiter(CHEBURCHECK_MIN_INTERVAL, CHEBURCHECK_MAX_INTERVAL)
-_country_limiter = RateLimiter(COUNTRY_MIN_INTERVAL, COUNTRY_MAX_INTERVAL)
+_chebur_limiter = RateLimiter(CHEBURCHECK_MIN_INTERVAL, CHEBURCHECK_MAX_INTERVAL, "gate")
+_country_limiter = RateLimiter(COUNTRY_MIN_INTERVAL, COUNTRY_MAX_INTERVAL, "country")
 _geo_cache = TtlCache({}, 0)
 
 
@@ -717,7 +725,13 @@ def cheburcheck_ip(ip: str) -> Verdict:
     return Verdict(True, "ok", "доступен в РФ")
 
 
+def time_is_up() -> bool:
+    return MAX_RUNTIME_MINUTES > 0 and time.monotonic() - START_TIME > MAX_RUNTIME_MINUTES * 60
+
+
 def safe_cheburcheck(ip: str) -> Verdict:
+    if time_is_up():
+        return Verdict(False, "deferred", "отложено: лимит времени запуска")
     try:
         return cheburcheck_ip(ip)
     except Exception as e:
@@ -1146,7 +1160,8 @@ def run_pipeline(
     print(f"[+] Уникальных IP: {len(ip_users)}")
 
     gate = GateStats()
-    counter = itertools.count(1)
+    xray_counter = itertools.count(1)
+    tcp_counter = itertools.count(1)
     gate_counter = itertools.count(1)
     done_queue: queue.Queue = queue.Queue()
     outstanding = 0
@@ -1167,7 +1182,10 @@ def run_pipeline(
             extra = f"страна неизвестна ({result.error})"
         else:
             extra = result.error
-        log(f"[check {next(counter)}] {status} {proxy_label(proxy)} {extra}")
+        if mode == "generate_204" and result.stage == "tcp":
+            log(f"[tcp {next(tcp_counter)}] FAIL {proxy_label(proxy)} {extra}")
+        else:
+            log(f"[xray {next(xray_counter)}] {status} {proxy_label(proxy)} {extra}")
         return result
 
     def submit(pool: ThreadPoolExecutor, fn: Callable, arg, tag: tuple) -> None:
@@ -1245,7 +1263,7 @@ def run_pipeline(
                 ip for ip, v in verdicts.items()
                 if v.transient and any(idx in waiting for idx in ip_users[ip])
             ]
-            if retry_round >= 1 or not retry:
+            if retry_round >= 1 or not retry or time_is_up():
                 break
             retry_round += 1
             log(f"[gate] повторная проверка {len(retry)} IP после временных ошибок Cheburcheck")
@@ -1267,7 +1285,9 @@ def run_pipeline(
         gate.throttled = _chebur_limiter.throttled
 
     passed_xray = sum(1 for r in results.values() if r.ok)
-    print(f"[+] Xray: проверено {len(results)}, прошло {passed_xray}")
+    tcp_dropped = sum(1 for r in results.values() if mode == "generate_204" and r.stage == "tcp")
+    print(f"[+] TCP-предпроверка: отсеяно {tcp_dropped}")
+    print(f"[+] Xray: проверено {len(results) - tcp_dropped}, прошло {passed_xray}")
     print(f"[+] Cheburcheck: запросов {gate.requests}, из кэша {gate.cached}, отсеяно до Xray {gate.prefiltered}; прошло {gate.passed}, не прошло {gate.failed}")
     ordered = [results[i] for i in sorted(results) if i not in rejected]
     return ordered, gate, Counter(r.stage for r in results.values())
@@ -1390,7 +1410,8 @@ def build_report(
         (
             f"Cheburcheck FAIL: {gate.failed} (blocked: {k['blocked']}, "
             f"HTTP: {k['http_429'] + k['http_5xx'] + k['http_other']}, 429: {k['http_429']}, 5xx: {k['http_5xx']}, "
-            f"timeout: {k['timeout']}, connection: {k['connection']}, other: {k['other'] + k['bad_json']})"
+            f"timeout: {k['timeout']}, connection: {k['connection']}, other: {k['other'] + k['bad_json']}, "
+            f"отложено по времени: {k['deferred']})"
         ),
         f"После Cheburcheck: {gate.passed}",
         "",
