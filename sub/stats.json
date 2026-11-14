@@ -1,39 +1,40 @@
 {
-  "updated": "2026-11-14T04:16:10Z",
-  "total": 418,
+  "updated": "2026-11-14T11:25:28Z",
+  "total": 481,
   "main": 100,
-  "countries": 36,
-  "unknown_country": 23,
+  "countries": 41,
+  "unknown_country": 29,
   "protocols": {
-    "vless": 411,
-    "trojan": 6,
-    "hysteria2": 1
+    "vless": 473,
+    "hysteria2": 5,
+    "vmess": 2,
+    "trojan": 1
   },
   "top_countries": [
     {
       "iso": "US",
       "name": "США",
-      "count": 24
+      "count": 32
     },
     {
       "iso": "BY",
       "name": "Беларусь",
-      "count": 19
+      "count": 18
     },
     {
       "iso": "DE",
       "name": "Германия",
-      "count": 13
+      "count": 11
     },
     {
       "iso": "NL",
       "name": "Нидерланды",
-      "count": 9
+      "count": 7
     },
     {
       "iso": "CA",
       "name": "Канада",
-      "count": 8
+      "count": 6
     },
     {
       "iso": "PL",
@@ -41,13 +42,13 @@
       "count": 3
     },
     {
-      "iso": "FI",
-      "name": "Финляндия",
+      "iso": "LK",
+      "name": "Шри-Ланка",
       "count": 3
     },
     {
-      "iso": "LV",
-      "name": "Латвия",
+      "iso": "CH",
+      "name": "Швейцария",
       "count": 2
     },
     {
