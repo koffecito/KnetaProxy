@@ -910,6 +910,7 @@ class CheckResult:
     exit_ip: str = ""
     exit_iso: str = ""
     stage: str = ""
+    via_429: bool = False
 
 
 def socks_proxies(port: int) -> dict[str, str]:
@@ -1115,18 +1116,19 @@ def check_single_proxy(
             ok, reason = True, ""
         if not ok:
             return CheckResult(proxy, False, reason, stage=mode)
+        via_429 = mode == "generate_204" and "429" in reason
         exit_ip, error = get_exit_ip(proxies)
         if not exit_ip:
             if mode == "generate_204":
-                return CheckResult(proxy, True, error, stage="unknown_ip")
+                return CheckResult(proxy, True, error, stage="unknown_ip", via_429=via_429)
             return CheckResult(proxy, False, error, stage="exit_ip")
         iso, error = lookup_country(exit_ip)
         if not iso:
             error = error or "country API: не удалось определить страну"
             if mode == "generate_204":
-                return CheckResult(proxy, True, error, exit_ip=exit_ip, stage="unknown_country")
+                return CheckResult(proxy, True, error, exit_ip=exit_ip, stage="unknown_country", via_429=via_429)
             return CheckResult(proxy, False, error, exit_ip=exit_ip, stage="country")
-        return CheckResult(proxy, True, exit_ip=exit_ip, exit_iso=iso, stage="ok")
+        return CheckResult(proxy, True, exit_ip=exit_ip, exit_iso=iso, stage="ok", via_429=via_429)
     except Exception as e:
         return CheckResult(proxy, False, f"{type(e).__name__}: {str(e)[:110]}", stage="other")
     finally:
@@ -1194,7 +1196,7 @@ def run_pipeline(
             port_checked = (
                 mode == "generate_204" and TCP_PRECHECK_TIMEOUT > 0 and bool(config_ips[idx]) and uses_tcp(proxy)
             )
-            mark = " (tcp ок)" if port_checked else ""
+            mark = (" (tcp ок)" if port_checked else "") + (" (429)" if result.ok and result.via_429 else "")
             log(f"[xray {next(xray_counter)}] {status}{mark} {proxy_label(proxy)} {extra}")
         return result
 
@@ -1301,10 +1303,13 @@ def run_pipeline(
     passed_xray = sum(1 for r in results.values() if r.ok)
     tcp_dropped = sum(1 for r in results.values() if mode == "generate_204" and r.stage == "tcp")
     print(f"[+] TCP-предпроверка: отсеяно {tcp_dropped}")
-    print(f"[+] Xray: проверено {len(results) - tcp_dropped}, прошло {passed_xray}")
+    via_429 = sum(1 for r in results.values() if r.ok and r.via_429)
+    print(f"[+] Xray: проверено {len(results) - tcp_dropped}, прошло {passed_xray}, из них по ответу 429: {via_429}")
     print(f"[+] Cheburcheck: запросов {gate.requests}, из кэша {gate.cached}, отсеяно до Xray {gate.prefiltered}; прошло {gate.passed}, не прошло {gate.failed}")
     ordered = [results[i] for i in sorted(results) if i not in rejected]
-    return ordered, gate, Counter(r.stage for r in results.values())
+    stages = Counter(r.stage for r in results.values())
+    stages["via_429"] = via_429
+    return ordered, gate, stages
 
 #---------
 # ИСТОРИЯ
@@ -1411,7 +1416,7 @@ def build_report(
         f"Уникальных конфигов: {collect.unique}",
         f"DNS FAIL: {gate.dns}",
         f"Режим проверки: {mode}",
-        f"Проверено Xray: {sum(check.values())}",
+        f"Проверено Xray: {sum(v for k, v in check.items() if k != 'via_429')}",
         f"Xray FAIL: {check['xray']}",
         f"Проверка доступности FAIL: {check['generate_204'] + check['tcp']} (generate_204: {check['generate_204']}, tcp: {check['tcp']})",
         f"Ошибка EXIT IP: {check['exit_ip']}",
@@ -1419,6 +1424,7 @@ def build_report(
         f"Страна не определена, принято как «Неизвестно»: {unknown_total} (exit IP: {unknown_ip}, страна: {unknown_country})",
         f"Другие FAIL: {check['other']}",
         f"Xray OK: {check['ok'] + unknown_total}",
+        f"Из них прошли по ответу 429, а не 204: {check['via_429']}",
         f"Cheburcheck запросов: {gate.requests} (из кэша IP: {gate.cached}, ответов 429: {gate.throttled})",
         f"Отсеяно по кэшу Cheburcheck до Xray: {gate.prefiltered}",
         (
