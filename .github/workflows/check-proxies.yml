@@ -2,7 +2,7 @@ name: Check proxies
 
 on:
   schedule:
-    - cron: "0 */4 * * *"
+    - cron: "23 */4 * * *"
   workflow_dispatch:
     inputs:
       xray_version:
