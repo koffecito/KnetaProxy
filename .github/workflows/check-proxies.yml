@@ -79,7 +79,7 @@ jobs:
         env:
           SUBSCRIPTIONS: ${{ secrets.SUBSCRIPTIONS }}
           CACHE_SALT: ${{ secrets.CACHE_SALT }}
-          CHEBURCHECK_CACHE_HOURS: "48"
+          CHEBURCHECK_CACHE_HOURS: "24"
         run: python checker.py
 
       - name: Send Telegram stats
