@@ -1,13 +1,13 @@
 {
-  "updated": "2026-11-17T22:47:24Z",
-  "total": 521,
+  "updated": "2026-11-18T00:10:00Z",
+  "total": 540,
   "main": 100,
-  "countries": 36,
-  "unknown_country": 15,
+  "countries": 35,
+  "unknown_country": 13,
   "protocols": {
-    "vless": 507,
+    "vless": 527,
     "hysteria2": 10,
-    "vmess": 3,
+    "vmess": 2,
     "trojan": 1
   },
   "top_countries": [
@@ -24,7 +24,7 @@
     {
       "iso": "NL",
       "name": "Нидерланды",
-      "count": 13
+      "count": 14
     },
     {
       "iso": "IT",
@@ -52,8 +52,8 @@
       "count": 3
     },
     {
-      "iso": "IR",
-      "name": "Иран",
+      "iso": "ES",
+      "name": "Испания",
       "count": 3
     },
     {
