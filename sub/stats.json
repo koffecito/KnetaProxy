@@ -1,44 +1,49 @@
 {
-  "updated": "2026-11-18T16:13:21Z",
-  "total": 347,
+  "updated": "2026-11-18T20:16:40Z",
+  "total": 390,
   "main": 100,
-  "countries": 34,
-  "unknown_country": 22,
+  "countries": 32,
+  "unknown_country": 21,
   "protocols": {
-    "vless": 333,
-    "hysteria2": 11,
-    "trojan": 2,
-    "vmess": 1
+    "vless": 376,
+    "hysteria2": 12,
+    "vmess": 1,
+    "trojan": 1
   },
   "top_countries": [
     {
       "iso": "US",
       "name": "США",
-      "count": 33
-    },
-    {
-      "iso": "NL",
-      "name": "Нидерланды",
-      "count": 17
+      "count": 36
     },
     {
       "iso": "DE",
       "name": "Германия",
+      "count": 14
+    },
+    {
+      "iso": "NL",
+      "name": "Нидерланды",
       "count": 13
     },
     {
-      "iso": "BY",
-      "name": "Беларусь",
-      "count": 6
+      "iso": "BG",
+      "name": "Болгария",
+      "count": 3
+    },
+    {
+      "iso": "FR",
+      "name": "Франция",
+      "count": 3
     },
     {
       "iso": "IT",
       "name": "Италия",
-      "count": 4
+      "count": 3
     },
     {
-      "iso": "RO",
-      "name": "Румыния",
+      "iso": "JP",
+      "name": "Япония",
       "count": 3
     },
     {
@@ -47,14 +52,9 @@
       "count": 3
     },
     {
-      "iso": "BG",
-      "name": "Болгария",
-      "count": 2
-    },
-    {
-      "iso": "JP",
-      "name": "Япония",
-      "count": 2
+      "iso": "SG",
+      "name": "Сингапур",
+      "count": 3
     },
     {
       "iso": "CA",
