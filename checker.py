@@ -49,7 +49,7 @@ CHEBURCHECK_WORKERS = env_int("CHEBURCHECK_WORKERS", 4)
 CHEBURCHECK_RETRIES = env_int("CHEBURCHECK_RETRIES", 1)
 CHEBURCHECK_MIN_INTERVAL = env_float("CHEBURCHECK_MIN_INTERVAL", 4.0)
 CHEBURCHECK_MAX_INTERVAL = env_float("CHEBURCHECK_MAX_INTERVAL", 12)
-CHEBURCHECK_CACHE_HOURS = env_float("CHEBURCHECK_CACHE_HOURS", 24)
+CHEBURCHECK_CACHE_HOURS = env_float("CHEBURCHECK_CACHE_HOURS", 48)
 CHEBURCHECK_BLOCKED_CACHE_HOURS = env_float("CHEBURCHECK_BLOCKED_CACHE_HOURS", 168)
 CHEBURCHECK_RECHECK_DELAY = env_float("CHEBURCHECK_RECHECK_DELAY", 10)
 
@@ -59,6 +59,7 @@ REQUEST_TIMEOUT = env_float("REQUEST_TIMEOUT", 5)
 TCP_PRECHECK_TIMEOUT = env_float("TCP_PRECHECK_TIMEOUT", 3)
 TCP_PRECHECK_MAX_IPS = env_int("TCP_PRECHECK_MAX_IPS", 2)
 GENERATE_204_STOP_ON_TIMEOUT = env_int("GENERATE_204_STOP_ON_TIMEOUT", 1)
+GENERATE_204_REQUIRE_ALL = env_int("GENERATE_204_REQUIRE_ALL", 1)
 
 EXIT_IP_API_URLS = tuple(
     x.strip()
@@ -920,6 +921,8 @@ def socks_proxies(port: int) -> dict[str, str]:
 
 def check_generate_204(proxies: dict[str, str]) -> tuple[bool, str]:
     errors = []
+    answered_204 = 0
+    answered_429 = 0
     for url in GENERATE_204_URLS:
         try:
             r = requests.get(
@@ -930,18 +933,30 @@ def check_generate_204(proxies: dict[str, str]) -> tuple[bool, str]:
                 headers={"Connection": "close", "User-Agent": "KnetaProxy/1.0"},
             )
         except requests.Timeout as e:
-            if GENERATE_204_STOP_ON_TIMEOUT:
+            if GENERATE_204_STOP_ON_TIMEOUT or GENERATE_204_REQUIRE_ALL:
                 return False, exception_text("generate_204", e)
             errors.append(exception_text("generate_204", e))
             continue
         except requests.RequestException as e:
             errors.append(exception_text("generate_204", e))
+            if GENERATE_204_REQUIRE_ALL:
+                return False, errors[-1]
             continue
         if r.status_code == 204:
-            return True, "generate_204 OK"
-        if r.status_code == 429:
+            answered_204 += 1
+        elif r.status_code == 429:
+            answered_429 += 1
+        else:
+            errors.append(http_error_text("generate_204", r))
+            if GENERATE_204_REQUIRE_ALL:
+                return False, errors[-1]
+            continue
+        if not GENERATE_204_REQUIRE_ALL:
+            break
+    if answered_204 + answered_429 > 0 and (not GENERATE_204_REQUIRE_ALL or not errors):
+        if answered_204 == 0:
             return True, "generate_204: 429 (узел отвечает)"
-        errors.append(http_error_text("generate_204", r))
+        return True, "generate_204 OK"
     return False, errors[-1] if errors else "generate_204: нет URL для проверки"
 
 
