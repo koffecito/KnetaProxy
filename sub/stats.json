@@ -1,35 +1,40 @@
 {
-  "updated": "2026-11-20T20:12:18Z",
-  "total": 169,
+  "updated": "2026-11-20T21:59:33Z",
+  "total": 263,
   "main": 100,
-  "countries": 24,
-  "unknown_country": 11,
+  "countries": 27,
+  "unknown_country": 12,
   "protocols": {
-    "vless": 158,
+    "vless": 248,
     "hysteria2": 9,
-    "vmess": 1,
+    "vmess": 5,
     "trojan": 1
   },
   "top_countries": [
     {
       "iso": "DE",
       "name": "Германия",
-      "count": 26
+      "count": 22
     },
     {
       "iso": "US",
       "name": "США",
-      "count": 22
+      "count": 21
     },
     {
       "iso": "NL",
       "name": "Нидерланды",
-      "count": 15
+      "count": 17
+    },
+    {
+      "iso": "SE",
+      "name": "Швеция",
+      "count": 7
     },
     {
       "iso": "RU",
       "name": "Россия",
-      "count": 12
+      "count": 6
     },
     {
       "iso": "IT",
@@ -42,24 +47,19 @@
       "count": 4
     },
     {
-      "iso": "SE",
-      "name": "Швеция",
+      "iso": "SG",
+      "name": "Сингапур",
       "count": 3
     },
     {
-      "iso": "SG",
-      "name": "Сингапур",
-      "count": 2
+      "iso": "CA",
+      "name": "Канада",
+      "count": 3
     },
     {
-      "iso": "ES",
-      "name": "Испания",
-      "count": 2
-    },
-    {
-      "iso": "PL",
-      "name": "Польша",
-      "count": 2
+      "iso": "IQ",
+      "name": "Ирак",
+      "count": 3
     }
   ]
 }
