@@ -1,64 +1,64 @@
 {
-  "updated": "2026-11-20T08:13:29Z",
-  "total": 242,
+  "updated": "2026-11-20T10:29:31Z",
+  "total": 273,
   "main": 100,
-  "countries": 30,
-  "unknown_country": 2,
+  "countries": 27,
+  "unknown_country": 10,
   "protocols": {
-    "vless": 230,
-    "hysteria2": 4,
-    "vmess": 6,
-    "trojan": 2
+    "vless": 235,
+    "hysteria2": 30,
+    "vmess": 5,
+    "trojan": 3
   },
   "top_countries": [
     {
       "iso": "US",
       "name": "США",
-      "count": 26
+      "count": 23
     },
     {
       "iso": "DE",
       "name": "Германия",
-      "count": 12
-    },
-    {
-      "iso": "ES",
-      "name": "Испания",
-      "count": 9
-    },
-    {
-      "iso": "NL",
-      "name": "Нидерланды",
-      "count": 7
+      "count": 20
     },
     {
       "iso": "RU",
       "name": "Россия",
-      "count": 7
+      "count": 12
     },
     {
-      "iso": "HK",
-      "name": "Гонконг",
-      "count": 7
+      "iso": "NL",
+      "name": "Нидерланды",
+      "count": 8
     },
     {
-      "iso": "FR",
-      "name": "Франция",
+      "iso": "CA",
+      "name": "Канада",
       "count": 5
     },
     {
-      "iso": "IT",
-      "name": "Италия",
+      "iso": "SE",
+      "name": "Швеция",
       "count": 4
+    },
+    {
+      "iso": "FI",
+      "name": "Финляндия",
+      "count": 4
+    },
+    {
+      "iso": "EE",
+      "name": "Эстония",
+      "count": 4
+    },
+    {
+      "iso": "AM",
+      "name": "Армения",
+      "count": 3
     },
     {
       "iso": "SG",
       "name": "Сингапур",
-      "count": 3
-    },
-    {
-      "iso": "BY",
-      "name": "Беларусь",
       "count": 3
     }
   ]
