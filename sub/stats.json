@@ -1,44 +1,53 @@
 {
-  "updated": "2026-11-20T12:11:19Z",
-  "total": 281,
+  "updated": "2026-11-20T16:09:50Z",
+  "total": 153,
   "main": 100,
-  "countries": 30,
-  "unknown_country": 6,
+  "countries": 22,
+  "unknown_country": 9,
   "protocols": {
-    "vless": 241,
-    "hysteria2": 30,
-    "vmess": 9,
-    "trojan": 1
+    "vless": 140,
+    "hysteria2": 11,
+    "trojan": 2
   },
   "top_countries": [
     {
       "iso": "US",
       "name": "США",
-      "count": 22
-    },
-    {
-      "iso": "RU",
-      "name": "Россия",
-      "count": 21
+      "count": 25
     },
     {
       "iso": "DE",
       "name": "Германия",
-      "count": 20
+      "count": 21
     },
     {
-      "iso": "CA",
-      "name": "Канада",
-      "count": 8
+      "iso": "RU",
+      "name": "Россия",
+      "count": 11
     },
     {
       "iso": "NL",
       "name": "Нидерланды",
-      "count": 6
+      "count": 10
     },
     {
-      "iso": "SG",
-      "name": "Сингапур",
+      "iso": "IT",
+      "name": "Италия",
+      "count": 5
+    },
+    {
+      "iso": "SE",
+      "name": "Швеция",
+      "count": 4
+    },
+    {
+      "iso": "RO",
+      "name": "Румыния",
+      "count": 4
+    },
+    {
+      "iso": "CA",
+      "name": "Канада",
       "count": 3
     },
     {
@@ -47,18 +56,8 @@
       "count": 2
     },
     {
-      "iso": "LV",
-      "name": "Латвия",
-      "count": 2
-    },
-    {
-      "iso": "CZ",
-      "name": "Чехия",
-      "count": 2
-    },
-    {
-      "iso": "JP",
-      "name": "Япония",
+      "iso": "FI",
+      "name": "Финляндия",
       "count": 2
     }
   ]
