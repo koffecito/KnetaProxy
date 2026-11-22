@@ -1,20 +1,20 @@
 {
-  "updated": "2026-11-22T08:15:48Z",
-  "total": 451,
+  "updated": "2026-11-22T10:17:15Z",
+  "total": 456,
   "main": 100,
-  "countries": 33,
-  "unknown_country": 11,
+  "countries": 35,
+  "unknown_country": 12,
   "protocols": {
-    "vless": 416,
-    "hysteria2": 18,
-    "vmess": 12,
+    "vless": 430,
+    "hysteria2": 13,
+    "vmess": 8,
     "trojan": 5
   },
   "top_countries": [
     {
       "iso": "US",
       "name": "США",
-      "count": 21
+      "count": 20
     },
     {
       "iso": "ES",
@@ -24,17 +24,22 @@
     {
       "iso": "DE",
       "name": "Германия",
-      "count": 13
-    },
-    {
-      "iso": "RU",
-      "name": "Россия",
-      "count": 12
+      "count": 18
     },
     {
       "iso": "NL",
       "name": "Нидерланды",
-      "count": 7
+      "count": 8
+    },
+    {
+      "iso": "RU",
+      "name": "Россия",
+      "count": 8
+    },
+    {
+      "iso": "CY",
+      "name": "Кипр",
+      "count": 6
     },
     {
       "iso": "RO",
@@ -42,23 +47,18 @@
       "count": 4
     },
     {
-      "iso": "CY",
-      "name": "Кипр",
-      "count": 3
+      "iso": "AE",
+      "name": "ОАЭ",
+      "count": 4
     },
     {
-      "iso": "PL",
-      "name": "Польша",
-      "count": 3
+      "iso": "CA",
+      "name": "Канада",
+      "count": 2
     },
     {
-      "iso": "HK",
-      "name": "Гонконг",
-      "count": 3
-    },
-    {
-      "iso": "SG",
-      "name": "Сингапур",
+      "iso": "TR",
+      "name": "Турция",
       "count": 2
     }
   ]
