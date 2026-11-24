@@ -1,12 +1,12 @@
 {
-  "updated": "2026-11-24T01:58:16Z",
-  "total": 380,
+  "updated": "2026-11-24T04:09:36Z",
+  "total": 340,
   "main": 100,
-  "countries": 30,
-  "unknown_country": 9,
+  "countries": 26,
+  "unknown_country": 10,
   "protocols": {
-    "vless": 366,
-    "hysteria2": 6,
+    "vless": 325,
+    "hysteria2": 7,
     "vmess": 8
   },
   "top_countries": [
@@ -18,7 +18,7 @@
     {
       "iso": "RU",
       "name": "Россия",
-      "count": 22
+      "count": 23
     },
     {
       "iso": "DE",
