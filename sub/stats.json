@@ -1,50 +1,54 @@
 {
-  "updated": "2026-11-24T00:14:45Z",
-  "total": 372,
+  "updated": "2026-11-24T01:58:16Z",
+  "total": 380,
   "main": 100,
-  "countries": 28,
-  "unknown_country": 7,
+  "countries": 30,
+  "unknown_country": 9,
   "protocols": {
-    "vless": 353,
-    "hysteria2": 9,
-    "vmess": 9,
-    "trojan": 1
+    "vless": 366,
+    "hysteria2": 6,
+    "vmess": 8
   },
   "top_countries": [
     {
       "iso": "ES",
       "name": "Испания",
-      "count": 34
+      "count": 33
     },
     {
       "iso": "RU",
       "name": "Россия",
-      "count": 20
+      "count": 22
     },
     {
       "iso": "DE",
       "name": "Германия",
-      "count": 14
+      "count": 12
     },
     {
       "iso": "NL",
       "name": "Нидерланды",
-      "count": 10
+      "count": 8
     },
     {
       "iso": "US",
       "name": "США",
-      "count": 9
+      "count": 7
     },
     {
       "iso": "CA",
       "name": "Канада",
-      "count": 8
+      "count": 7
     },
     {
-      "iso": "IT",
-      "name": "Италия",
-      "count": 2
+      "iso": "SG",
+      "name": "Сингапур",
+      "count": 5
+    },
+    {
+      "iso": "HK",
+      "name": "Гонконг",
+      "count": 1
     },
     {
       "iso": "CY",
@@ -52,13 +56,8 @@
       "count": 1
     },
     {
-      "iso": "FI",
-      "name": "Финляндия",
-      "count": 1
-    },
-    {
-      "iso": "HK",
-      "name": "Гонконг",
+      "iso": "IT",
+      "name": "Италия",
       "count": 1
     }
   ]
