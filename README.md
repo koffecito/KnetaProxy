@@ -35,12 +35,28 @@ Kneta собирает конфиги из разных источников, п
 
 Вставляйте в VPN-клиент как подписку:
 
-| Подписка | Ссылка |
-|---|---|
-| Основная (до 100 лучших) | ```text
-https://raw.githubusercontent.com/koffecito/Kneta/main/sub/working.txt``` |
-| Полная (все рабочие) | ```text
-https://raw.githubusercontent.com/koffecito/Kneta/main/sub/all.txt``` |
+<table>
+<tr>
+<td><b>Основная</b><br>до 100 лучших</td>
+<td>
+
+```text
+https://raw.githubusercontent.com/koffecito/Kneta/main/sub/working.txt
+```
+
+</td>
+</tr>
+<tr>
+<td><b>Полная</b><br>все рабочие</td>
+<td>
+
+```text
+https://raw.githubusercontent.com/koffecito/Kneta/main/sub/all.txt
+```
+
+</td>
+</tr>
+</table>
 
 ## 🔄 Как это работает
 
