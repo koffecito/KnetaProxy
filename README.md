@@ -12,7 +12,7 @@
 ![Основная](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.main&label=Основная&color=3BD35F)
 ![Стран](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.countries&label=Стран&color=00B8A9)
 
-[Основная подписка](https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/working.txt) · [Полная подписка](https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/all.txt) · [Отчёт](sub/report.txt) · [Канал](https://t.me/KnetaProject)
+[Основная подписка](https://raw.githubusercontent.com/koffecito/Kneta/main/sub/working.txt) · [Полная подписка](https://raw.githubusercontent.com/koffecito/Kneta/main/sub/all.txt) · [Отчёт](sub/report.txt) · [Канал](https://t.me/KnetaProject)
 
 </div>
 
@@ -37,8 +37,8 @@ Kneta собирает конфиги из разных источников, п
 
 | Подписка | Ссылка |
 |---|---|
-| Основная (до 100 лучших) | `https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/working.txt` |
-| Полная (все рабочие) | `https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/all.txt` |
+| Основная (до 100 лучших) | `https://raw.githubusercontent.com/koffecito/Kneta/main/sub/working.txt` |
+| Полная (все рабочие) | `https://raw.githubusercontent.com/koffecito/Kneta/main/sub/all.txt` |
 
 ## 🔄 Как это работает
 
