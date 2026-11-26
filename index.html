@@ -226,7 +226,7 @@ function countTo(el,n){
 }
 function plural(n,w){const a=n%100,b=n%10;return n+" "+(a>10&&a<15?w[2]:b===1?w[0]:b>1&&b<5?w[1]:w[2])}
 
-const PN={vless:"VLESS",vmess:"VMess",trojan:"Trojan",hysteria2:"Hysteria2",hy2:"Hysteria2"};
+const PN={vless:"VLESS",vmess:"VMess",trojan:"Trojan",hysteria2:"Hysteria2",hy2:"Hysteria2",ss:"Shadowsocks"};
 function parseSub(text){
   const out=[];
   for(const raw of text.split("\n")){

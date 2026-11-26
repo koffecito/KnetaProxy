@@ -119,7 +119,19 @@ for _target in os.environ.get("TCP_TARGETS", "1.1.1.1:443").split(","):
     else:
         TCP_TARGETS.append(_parsed)
 
-SUPPORTED_SCHEMES = ("vless", "vmess", "trojan", "hysteria2", "hy2")
+SUPPORTED_SCHEMES = ("vless", "vmess", "trojan", "hysteria2", "hy2", "ss")
+SS_METHODS = {
+    "aes-128-gcm",
+    "aes-256-gcm",
+    "chacha20-poly1305",
+    "chacha20-ietf-poly1305",
+    "xchacha20-poly1305",
+    "xchacha20-ietf-poly1305",
+    "2022-blake3-aes-128-gcm",
+    "2022-blake3-aes-256-gcm",
+    "2022-blake3-chacha20-poly1305",
+    "none",
+}
 OUTPUT_DIR = "sub"
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "working.txt")
 ALL_FILE = os.path.join(OUTPUT_DIR, "all.txt")
@@ -461,6 +473,17 @@ class ProxyConfig:
             data["ps"] = title
             raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()
             return "vmess://" + base64.b64encode(raw).decode()
+        if self.scheme == "ss":
+            host = f"[{self.host}]" if ":" in self.host else self.host
+            if self.user.startswith("2022-"):
+                userinfo = f"{quote(self.user, safe='')}:{quote(self.password, safe='')}"
+            else:
+                userinfo = base64.urlsafe_b64encode(f"{self.user}:{self.password}".encode()).decode().rstrip("=")
+            link = f"ss://{userinfo}@{host}:{self.port}"
+            query = urlencode(self.params)
+            if query:
+                link += "/?" + query
+            return link + ("#" + quote(title, safe="") if title else "")
         if self.scheme not in {"vless", "trojan", "hysteria2"}:
             return ""
         secret = self.user if self.scheme == "vless" else self.password
@@ -530,10 +553,54 @@ def parse_vmess(link: str) -> ProxyConfig | None:
         return None
 
 
+def decode_base64_text(value: str) -> str:
+    compact = value.strip().replace("-", "+").replace("_", "/")
+    return base64.b64decode(compact + "=" * (-len(compact) % 4)).decode("utf-8", errors="strict")
+
+
+def split_host_port(value: str) -> tuple[str, int]:
+    if value.startswith("["):
+        host, _, port = value[1:].partition("]:")
+    else:
+        host, _, port = value.rpartition(":")
+    number = int(port)
+    if not host or not 1 <= number <= 65535:
+        raise ValueError("bad host or port")
+    return host, number
+
+
+def parse_ss(link: str) -> ProxyConfig | None:
+    try:
+        rest = link.split("://", 1)[1]
+        rest, _, fragment = rest.partition("#")
+        rest, _, query = rest.partition("?")
+        rest = rest.rstrip("/")
+        if "@" not in rest:
+            rest = decode_base64_text(rest)
+        userinfo, _, hostport = rest.rpartition("@")
+        if ":" in userinfo:
+            userinfo = unquote(userinfo)
+        else:
+            userinfo = decode_base64_text(userinfo)
+        method, _, password = userinfo.partition(":")
+        method = method.strip().lower()
+        if method not in SS_METHODS or (not password and method != "none"):
+            return None
+        host, port = split_host_port(hostport.strip())
+        params = parse_query(query)
+        if params.get("plugin"):
+            return None
+        return ProxyConfig("ss", host, port, user=method, password=password, name=unquote(fragment), params=params)
+    except Exception:
+        return None
+
+
 def parse_link(link: str) -> ProxyConfig | None:
     scheme = link.split(":", 1)[0].lower()
     if scheme == "vmess":
         return parse_vmess(link)
+    if scheme == "ss":
+        return parse_ss(link)
     return parse_uri_link(link)
 
 
@@ -822,6 +889,16 @@ def build_xray_config(proxy: ProxyConfig, local_port: int) -> dict:
         outbound = {
             "protocol": "trojan",
             "settings": {"servers": [{"address": proxy.host, "port": proxy.port, "password": proxy.password}]},
+            "streamSettings": add_stream_settings(proxy.params),
+        }
+    elif proxy.scheme == "ss":
+        outbound = {
+            "protocol": "shadowsocks",
+            "settings": {
+                "servers": [
+                    {"address": proxy.host, "port": proxy.port, "method": proxy.user, "password": proxy.password}
+                ]
+            },
             "streamSettings": add_stream_settings(proxy.params),
         }
     elif proxy.scheme == "hysteria2":
@@ -1425,6 +1502,7 @@ def build_report(
         f"  VMess: {by['vmess']}",
         f"  Trojan: {by['trojan']}",
         f"  Hysteria2/Hy2: {by['hysteria2'] + by['hy2']}",
+        f"  Shadowsocks: {by['ss']}",
         f"Некорректных конфигов: {collect.invalid}",
         f"Неизвестных строк: {collect.unsupported_lines}",
         f"Дубликатов удалено: {collect.duplicates}",
@@ -1455,6 +1533,7 @@ def build_report(
         f"  VMess: {protocols['vmess']}",
         f"  Trojan: {protocols['trojan']}",
         f"  Hysteria2/Hy2: {protocols['hysteria2']}",
+        f"  Shadowsocks: {protocols['ss']}",
         "",
         "РАБОЧИЕ ПО СТРАНАМ:",
     ]
