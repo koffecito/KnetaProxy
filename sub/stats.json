@@ -1,39 +1,51 @@
 {
-  "updated": "2026-11-26T11:29:42Z",
-  "total": 317,
+  "updated": "2026-11-26T12:09:32Z",
+  "total": 604,
   "main": 100,
-  "countries": 32,
-  "unknown_country": 10,
+  "countries": 38,
+  "unknown_country": 24,
   "protocols": {
-    "vless": 307,
-    "hysteria2": 7,
-    "vmess": 3
+    "vless": 506,
+    "hysteria2": 22,
+    "vmess": 3,
+    "ss": 66,
+    "trojan": 7
   },
   "top_countries": [
     {
-      "iso": "RU",
-      "name": "Россия",
-      "count": 21
-    },
-    {
-      "iso": "US",
-      "name": "США",
-      "count": 19
-    },
-    {
       "iso": "DE",
       "name": "Германия",
-      "count": 16
+      "count": 18
     },
     {
       "iso": "NL",
       "name": "Нидерланды",
-      "count": 14
+      "count": 18
     },
     {
-      "iso": "ES",
-      "name": "Испания",
-      "count": 8
+      "iso": "US",
+      "name": "США",
+      "count": 16
+    },
+    {
+      "iso": "RU",
+      "name": "Россия",
+      "count": 10
+    },
+    {
+      "iso": "FI",
+      "name": "Финляндия",
+      "count": 6
+    },
+    {
+      "iso": "IL",
+      "name": "Израиль",
+      "count": 5
+    },
+    {
+      "iso": "PL",
+      "name": "Польша",
+      "count": 5
     },
     {
       "iso": "RO",
@@ -41,24 +53,14 @@
       "count": 4
     },
     {
-      "iso": "SG",
-      "name": "Сингапур",
-      "count": 3
-    },
-    {
       "iso": "CA",
       "name": "Канада",
       "count": 3
     },
     {
-      "iso": "IL",
-      "name": "Израиль",
-      "count": 2
-    },
-    {
-      "iso": "CH",
-      "name": "Швейцария",
-      "count": 2
+      "iso": "SE",
+      "name": "Швеция",
+      "count": 3
     }
   ]
 }
