@@ -37,8 +37,8 @@ Kneta собирает конфиги из разных источников, п
 
 | Подписка | Ссылка |
 |---|---|
-| Основная (до 100 лучших) | `https://raw.githubusercontent.com/koffecito/Kneta/main/sub/working.txt` |
-| Полная (все рабочие) | `https://raw.githubusercontent.com/koffecito/Kneta/main/sub/all.txt` |
+| Основная (до 100 лучших) | ```https://raw.githubusercontent.com/koffecito/Kneta/main/sub/working.txt``` |
+| Полная (все рабочие) | ```https://raw.githubusercontent.com/koffecito/Kneta/main/sub/all.txt``` |
 
 ## 🔄 Как это работает
 
