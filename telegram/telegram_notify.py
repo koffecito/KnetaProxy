@@ -56,6 +56,7 @@ def parse_protocols(text: str) -> list[tuple[str, int]]:
         "VMess": r"^  VMess:\s*(\d+)$",
         "Trojan": r"^  Trojan:\s*(\d+)$",
         "Hysteria2/Hy2": r"^  Hysteria2/Hy2:\s*(\d+)$",
+        "Shadowsocks": r"^  Shadowsocks:\s*(\d+)$",
     }
     return [(name, get_int(block, pattern)) for name, pattern in names.items()]
 
