@@ -93,7 +93,7 @@ GENERATE_204_URLS = tuple(
     x.strip()
     for x in os.environ.get(
         "GENERATE_204_URLS",
-        "https://www.gstatic.com/generate_204,https://cp.cloudflare.com/generate_204",
+        "https://www.gstatic.com/generate_204,https://cp.cloudflare.com/generate_204,https://www.google.com/generate_204,https://connectivitycheck.gstatic.com/generate_204,https://clients3.google.com/generate_204",
     ).split(",")
     if x.strip()
 )
