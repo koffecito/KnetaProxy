@@ -38,7 +38,8 @@ def main() -> None:
         fail(f"Xray не найден ({XRAY_BIN}): установите Xray-core или задайте XRAY_BIN")
 
     with open(TYPE_FILE, "r", encoding="utf-8") as f:
-        mode = f.read().strip().lower()
+        type_lines = f.read().splitlines()
+    mode = type_lines[0].strip().lower() if type_lines else ""
     if mode not in VALID_MODES:
         fail(f"{TYPE_FILE} должен содержать одно из: {', '.join(VALID_MODES)}")
     print(f"[+] Режим: {mode}")
