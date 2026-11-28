@@ -12,7 +12,7 @@
 ![Основная](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.main&label=Основная&color=3BD35F)
 ![Стран](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkoffecito%2FKnetaProxy%2Fmain%2Fsub%2Fstats.json&query=%24.countries&label=Стран&color=00B8A9)
 
-[Основная подписка](https://raw.githubusercontent.com/koffecito/Kneta/main/sub/working.txt) · [Полная подписка](https://raw.githubusercontent.com/koffecito/Kneta/main/sub/all.txt) · [Отчёт](sub/report.txt) · [Канал](https://t.me/KnetaProject)
+[Основная подписка](https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/working.txt) · [Полная подписка](https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/all.txt) · [Отчёт](sub/report.txt) · [Канал](https://t.me/KnetaProject)
 
 </div>
 
@@ -35,28 +35,10 @@ Kneta собирает конфиги из разных источников, п
 
 Вставляйте в VPN-клиент как подписку:
 
-<table>
-<tr>
-<td><b>Основная</b><br>до 100 лучших</td>
-<td>
-
-```text
-https://raw.githubusercontent.com/koffecito/Kneta/main/sub/working.txt
-```
-
-</td>
-</tr>
-<tr>
-<td><b>Полная</b><br>все рабочие</td>
-<td>
-
-```text
-https://raw.githubusercontent.com/koffecito/Kneta/main/sub/all.txt
-```
-
-</td>
-</tr>
-</table>
+| Подписка | Ссылка |
+|---|---|
+| Основная (до 100 лучших) | `https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/working.txt` |
+| Полная (все рабочие) | `https://raw.githubusercontent.com/koffecito/KnetaProxy/main/sub/all.txt` |
 
 ## 🔄 Как это работает
 
@@ -110,7 +92,7 @@ https://example.com/subscription-two
 
 ## ⚙️ Настройка проверки
 
-В `other/type.txt` укажите один режим:
+В `other/type.txt` на **первой строке** укажите один режим:
 
 | Режим | Что делает |
 |---|---|
@@ -118,7 +100,16 @@ https://example.com/subscription-two
 | `tcp` | Через конфиг открывается TCP-соединение до `1.1.1.1:443` (список задаётся `TCP_TARGETS`) |
 | `no` | Xray запускается, но запрос через конфиг не проверяется |
 
-В режиме `generate_204` достаточно, чтобы ответил любой из адресов (по умолчанию `gstatic.com` и `cp.cloudflare.com`). Ответ `429` тоже считается успехом. Если выходной IP или страну определить не удалось, конфиг попадает в полную подписку со страной «Неизвестно», а в основную только в том случае, если конфигов с известной страной нет.
+На **второй строке** (необязательно) можно перечислить отпечатки `fp`, которые нужно отбрасывать, через запятую. Такие конфиги исключаются до проверки, а в отчёте появляется строка «Отброшено по fp». Конфиги без `fp` не затрагиваются. Пример файла:
+
+```text
+generate_204
+chrome, random, safari
+```
+
+Если второй строки нет или она пустая, ничего не отбрасывается.
+
+В режиме `generate_204` конфиг должен получить ответ от **всех** адресов списка (по умолчанию Google `gstatic.com`, Cloudflare `cp.cloudflare.com` и Microsoft `edge-http.microsoft.com`, свой список задаётся переменной `GENERATE_204_URLS`): ошибка или таймаут на любом из них означает отказ, поэтому три адреса в списке значат «3 из 3». Ответ `429` тоже считается ответом (узел дошёл до сервиса, тот просто ограничил частоту). Чтобы хватало одного адреса, задайте `GENERATE_204_REQUIRE_ALL=0`. Если выходной IP или страну определить не удалось, конфиг попадает в полную подписку со страной «Неизвестно», а в основную только в том случае, если конфигов с известной страной нет.
 
 Перед запуском Xray для конфигов на TCP-транспорте быстро проверяется порт (до двух IP, таймаут `TCP_PRECHECK_TIMEOUT`). Hysteria2 и QUIC-транспорты эту проверку пропускают. Учтите, что открытый порт ещё не значит рабочий прокси: у CDN порт 443 открыт всегда, поэтому основную работу делает Xray.
 
@@ -140,7 +131,8 @@ https://example.com/subscription-two
 | `CHEBURCHECK_WORKERS` | 4 | Потоков запросов к Cheburcheck |
 | `COUNTRY_CACHE_DAYS` | 14 | Срок хранения страны по IP, дни |
 | `HISTORY_KEEP_RUNS` | 30 | Сколько запусков хранить записи о конфиге, который перестал встречаться |
-| `GENERATE_204_URLS` | gstatic, cloudflare | Адреса проверки, через запятую |
+| `GENERATE_204_URLS` | gstatic, cloudflare, microsoft | Адреса проверки, через запятую; ответить должны все |
+| `GENERATE_204_REQUIRE_ALL` | 1 | `1`: должны ответить все адреса, `0`: достаточно одного |
 | `CHEBURCHECK_CACHE_HOURS` | 48 | Срок хранения вердикта «доступен», часы |
 | `CHEBURCHECK_BLOCKED_CACHE_HOURS` | 168 | Срок хранения вердикта «заблокирован», часы |
 | `MAX_RUNTIME_MINUTES` | 90 | После этого времени новые IP не отправляются в Cheburcheck, результаты сохраняются |

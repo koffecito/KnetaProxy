@@ -9,6 +9,7 @@ import json
 import os
 import queue
 import random
+import re
 import socket
 import subprocess
 import sys
@@ -240,16 +241,36 @@ def country_name(iso: str) -> str:
 # РЕЖИМ ПРОВЕРКИ
 #---------
 
-def load_mode(path: str = TYPE_FILE) -> str:
+def read_type_lines(path: str = TYPE_FILE) -> list[str]:
     if not os.path.exists(path):
-        return "generate_204"
+        return []
     with open(path, "r", encoding="utf-8") as f:
-        raw = f.read().strip().lower()
+        return f.read().splitlines()
+
+
+def load_mode(path: str = TYPE_FILE) -> str:
+    lines = read_type_lines(path)
+    raw = lines[0].strip().lower() if lines else ""
     if raw in VALID_MODES:
         return raw
     if raw:
         print(f"[!] {path}: неизвестный режим '{raw}', использую generate_204", file=sys.stderr)
     return "generate_204"
+
+
+def load_excluded_fp(path: str = TYPE_FILE) -> tuple[str, ...]:
+    lines = read_type_lines(path)
+    if len(lines) < 2:
+        return ()
+    names = [x.strip().lower() for x in re.split(r"[,;\s]+", lines[1]) if x.strip()]
+    return tuple(dict.fromkeys(names))
+
+
+def filter_by_fp(configs: list, excluded: tuple[str, ...]) -> tuple[list, int]:
+    if not excluded:
+        return configs, 0
+    kept = [p for p in configs if p.params.get("fp", "").strip().lower() not in excluded]
+    return kept, len(configs) - len(kept)
 
 
 #---------
@@ -659,6 +680,8 @@ class CollectStats:
     invalid: int = 0
     duplicates: int = 0
     unique: int = 0
+    fp_dropped: int = 0
+    fp_names: tuple = ()
     by_scheme: Counter = field(default_factory=Counter)
 
 
@@ -1507,6 +1530,7 @@ def build_report(
         f"Неизвестных строк: {collect.unsupported_lines}",
         f"Дубликатов удалено: {collect.duplicates}",
         f"Уникальных конфигов: {collect.unique}",
+        *([f"Отброшено по fp ({', '.join(collect.fp_names)}): {collect.fp_dropped}"] if collect.fp_names else []),
         f"DNS FAIL: {gate.dns}",
         f"Режим проверки: {mode}",
         f"Проверено Xray: {sum(v for k, v in check.items() if k != 'via_429')}",
@@ -1611,6 +1635,11 @@ def main() -> None:
     print(f"[+] Режим проверки: {mode}")
     configs, collect, source_errors = collect_configs()
     print(f"[+] Найдено: {len(configs)} уникальных конфигов")
+    excluded_fp = load_excluded_fp()
+    configs, collect.fp_dropped = filter_by_fp(configs, excluded_fp)
+    collect.fp_names = excluded_fp
+    if excluded_fp:
+        print(f"[+] Отброшено по fp ({', '.join(excluded_fp)}): {collect.fp_dropped}, осталось {len(configs)}")
 
     global _geo_cache
     history = load_history()
